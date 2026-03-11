@@ -77,18 +77,24 @@ class HomeController extends GetxController {
     'transformers>=4.30.0',
     'tqdm>=4.65.0',
     'huggingface-hub',
+    'ninja',
   ];
   static const _envCheckPackages = [
     'torch',
     'transformers',
     'tqdm',
     'huggingface_hub',
+    'ninja',
   ];
   final isInstalling = false.obs;
   final installLog = ''.obs;
   final isChecking = false.obs;
   final envReady = false.obs;
   final checkLog = ''.obs;
+
+  // --- Build Tools (MSVC + ninja) ---
+  final isBuildToolsInstalling = false.obs;
+  final buildToolsLog = ''.obs;
 
   // --- Text Controllers ---
   late final TextEditingController vocabSizeController;
@@ -286,6 +292,24 @@ class HomeController extends GetxController {
     cudaHomeController.text = path;
   }
 
+  /// 从 cudaHome 路径中提取 CUDA 版本并返回对应 PyTorch wheel tag（如 cu124）。
+  /// 若无法解析则返回默认值 'cu124'。
+  String _getCudaWheelTag() {
+    final home = cudaHome.value;
+    if (home.isNotEmpty) {
+      final segments = home.replaceAll('\\', '/').split('/');
+      for (final seg in segments.reversed) {
+        final m = RegExp(r'^[vV]?(\d+)\.(\d+)').firstMatch(seg);
+        if (m != null) {
+          final major = m.group(1)!;
+          final minor = m.group(2)!;
+          return 'cu$major$minor'; // e.g., cu124
+        }
+      }
+    }
+    return 'cu124';
+  }
+
   Future<void> pickCudaHomeDir() async {
     final path = await FilePicker.platform.getDirectoryPath(
       dialogTitle: '选择 CUDA 安装目录（包含 bin/nvcc.exe 的上级目录）',
@@ -410,14 +434,13 @@ class HomeController extends GetxController {
   String _buildTrainingScript() {
     final p = precisionString;
     final cudaHomeStr = cudaHome.value;
-    return '''import os, sys, glob
+    return '''import os, sys, glob, shutil
 sys.path.insert(0, r"${repoPath.value}")
 os.chdir(r"${repoPath.value}")
 
-# ── CUDA_HOME 设置（由 Flutter 注入或自动检测）──────────────────────
+# ── CUDA_HOME 强制设置（覆盖系统变量，避免旧值干扰）──────────────────
 _cuda_home = r"$cudaHomeStr"
 if not _cuda_home:
-    # 未手动指定时自动扫描 Windows 默认安装路径
     for _root in [
         r"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA",
         r"C:\\CUDA",
@@ -427,11 +450,92 @@ if not _cuda_home:
             _cuda_home = _candidates[0]
             break
 if _cuda_home:
-    os.environ.setdefault("CUDA_HOME", _cuda_home)
-    os.environ.setdefault("CUDA_PATH", _cuda_home)
-    print(f"CUDA_HOME = {_cuda_home}")
+    os.environ["CUDA_HOME"] = _cuda_home
+    os.environ["CUDA_PATH"] = _cuda_home
+    # 把 CUDA bin 加进 PATH，保证 nvcc 可用
+    _cuda_bin = os.path.join(_cuda_home, "bin")
+    if _cuda_bin not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = _cuda_bin + os.pathsep + os.environ.get("PATH", "")
+    print(f"[BUILD] CUDA_HOME = {_cuda_home}")
 else:
-    print("WARNING: CUDA_HOME not found, CUDA kernel compilation may fail")
+    print("[BUILD] WARNING: CUDA_HOME not found, CUDA kernel compilation may fail")
+
+# ── MSVC 环境完整初始化 ───────────────────────────────────────────
+# 仅把 cl.exe 加入 PATH 不够；必须运行 vcvarsall.bat x64 才能设置
+# INCLUDE / LIB / LIBPATH 等变量，否则 ninja 调 cl.exe 找不到头文件。
+import pathlib as _pathlib
+import subprocess as _sp2
+
+def _setup_msvc_env():
+    # 1. 先确定 cl.exe 路径（已在 PATH 或扫描常见目录）
+    cl_path = shutil.which("cl")
+    if not cl_path:
+        patterns = [
+            r"C:\\Program Files\\Microsoft Visual Studio\\*\\*\\VC\\Tools\\MSVC\\*\\bin\\Hostx64\\x64",
+            r"C:\\Program Files (x86)\\Microsoft Visual Studio\\*\\*\\VC\\Tools\\MSVC\\*\\bin\\Hostx64\\x64",
+        ]
+        for pat in patterns:
+            matches = sorted(glob.glob(pat), reverse=True)
+            if matches:
+                cl_dir = matches[0]
+                os.environ["PATH"] = cl_dir + os.pathsep + os.environ.get("PATH", "")
+                cl_path = os.path.join(cl_dir, "cl.exe")
+                break
+    if not cl_path:
+        return False
+
+    print(f"[BUILD] cl.exe: {cl_path}")
+
+    # 2. 从 cl.exe 向上查找 vcvarsall.bat
+    #    cl.exe 位于 VC/Tools/MSVC/<ver>/bin/Hostx64/x64/
+    #    vcvarsall.bat 位于 VC/Auxiliary/Build/
+    p = _pathlib.Path(cl_path).resolve()
+    vcvars = None
+    for _ in range(10):
+        p = p.parent
+        candidate = p / "Auxiliary" / "Build" / "vcvarsall.bat"
+        if candidate.exists():
+            vcvars = candidate
+            break
+
+    if not vcvars:
+        print("[BUILD] WARNING: vcvarsall.bat not found, INCLUDE/LIB may be missing")
+        return True  # cl.exe 在 PATH，尽力而为
+
+    # 3. 运行 vcvarsall.bat x64 并把它导出的环境变量应用到当前进程
+    print(f"[BUILD] 初始化 MSVC 环境: {vcvars}")
+    try:
+        result = _sp2.run(
+            f'"{vcvars}" x64 > nul 2>&1 && set',
+            capture_output=True, text=True, shell=True, timeout=60,
+        )
+        applied = 0
+        for line in result.stdout.splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                os.environ[k] = v
+                applied += 1
+        print(f"[BUILD] MSVC 环境变量已应用（{applied} 条）")
+    except Exception as _e:
+        print(f"[BUILD] WARNING: vcvarsall.bat 执行失败: {_e}")
+    return True
+
+if not _setup_msvc_env():
+    print("[BUILD] WARNING: MSVC cl.exe not found!")
+    print("[BUILD]   请在设置页点击「安装编译工具」按钮安装轻量版编译工具")
+
+# ── ninja 检测 ────────────────────────────────────────────────────
+if shutil.which("ninja"):
+    print(f"[BUILD] ninja found: {shutil.which('ninja')}")
+else:
+    print("[BUILD] WARNING: ninja not found, falling back to make/MSBuild")
+
+# ── 诊断摘要 ──────────────────────────────────────────────────────
+try:
+    _nvcc = _sp2.run(["nvcc", "--version"], capture_output=True, text=True, timeout=10)
+    print(f"[BUILD] nvcc: {_nvcc.stdout.strip().splitlines()[-1] if _nvcc.stdout else 'not found'}")
+except Exception as _e:
+    print(f"[BUILD] nvcc not reachable: {_e}")
 
 os.environ["WKV"] = "CUDA"
 os.environ["FUSED_KERNEL"] = "0"
@@ -440,6 +544,37 @@ os.environ["RWKV_HEAD_SIZE_A"] = "64"
 os.environ["RWKV_MY_TESTING"] = "x070"
 os.environ["RWKV_TRAIN_TYPE"] = "state"
 os.environ["RWKV_FLOAT_MODE"] = "$p"
+
+# ── 修复 rwkvop.py 中错误的 nvcc 标志，并清理失败的编译缓存 ─────────
+# 问题："-Xptxas -O3" 作为单一字符串传给 nvcc，nvcc 不识别带空格的参数。
+# 修复：改为 "-Xptxas=-O3"（等号连接），nvcc 可正确解析。
+import pathlib as _pl2
+import shutil as _shu2
+
+_rwkvop = _pl2.Path(r"${repoPath.value}") / "model" / "rwkv7" / "operator" / "rwkvop.py"
+if _rwkvop.exists():
+    _txt = _rwkvop.read_text(encoding="utf-8")
+    _fixed = _txt
+    _changes = []
+    if '"-Xptxas -O3"' in _fixed or "'-Xptxas -O3'" in _fixed:
+        _fixed = _fixed.replace('"-Xptxas -O3"', '"-Xptxas=-O3"').replace("'-Xptxas -O3'", "'-Xptxas=-O3'")
+        _changes.append("-Xptxas -O3 → -Xptxas=-O3")
+    if '--allow-unsupported-compiler' not in _fixed:
+        _fixed = _fixed.replace('extra_cuda_cflags=flags', 'extra_cuda_cflags=flags + ["--allow-unsupported-compiler"]')
+        _changes.append("added --allow-unsupported-compiler")
+    if _changes:
+        _rwkvop.write_text(_fixed, encoding="utf-8")
+        print(f"[BUILD] 已修复 rwkvop.py: {', '.join(_changes)}")
+    else:
+        print("[BUILD] rwkvop.py 标志检查通过（无需修复）")
+else:
+    print(f"[BUILD] WARNING: rwkvop.py 未找到: {_rwkvop}")
+
+# 清除上次失败留下的损坏编译缓存，避免 ninja 直接使用坏的中间文件
+_cache_root = _pl2.Path(os.environ.get("LOCALAPPDATA", "")) / "torch_extensions" / "torch_extensions" / "Cache"
+for _stale in _cache_root.glob("*/rwkv7_state_clampw"):
+    _shu2.rmtree(_stale, ignore_errors=True)
+    print(f"[BUILD] 已清理旧编译缓存: {_stale}")
 
 import torch
 import torch.nn as nn
@@ -658,33 +793,92 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       installLog.value +=
           '  pip 源: ${indexUrl.isNotEmpty ? indexUrl : "(默认 PyPI)"}\n\n';
 
-      // ── 3. 逐包安装 ───────────────────────────────────────────────
+      // ── 3. 确定 torch GPU CUDA wheel 源 ──────────────────────────
+      final torchWheelTag = _getCudaWheelTag();
+      final torchIndexUrl =
+          'https://download.pytorch.org/whl/$torchWheelTag';
+      installLog.value +=
+          '▶ 将安装 GPU (CUDA) 版本 torch\n'
+          '  CUDA wheel tag : $torchWheelTag\n'
+          '  PyTorch 镜像源 : $torchIndexUrl\n\n';
+
+      // ── 4. 逐包安装 ───────────────────────────────────────────────
       final failed = <String>[];
       for (final pkg in _envPackages) {
         installLog.value += '─' * 50 + '\n';
         installLog.value += '▶ 安装 $pkg ...\n';
 
+        if (pkg.startsWith('torch')) {
+          // ── torch：先卸载旧版本，再用 Process.run 从 GPU wheel 源安装 ──
+          // 使用 Process.run（阻塞式）而非 Process.start，避免 Windows 上
+          // 异步流监听器与 exitCode 之间的竞态导致 stderr 输出丢失。
+          installLog.value += '  先卸载已安装的 torch（避免 CPU/GPU 版本冲突）...\n';
+          final uninstall = await Process.run(
+            'pip', ['uninstall', 'torch', '-y'],
+            runInShell: true,
+            stdoutEncoding: utf8,
+            stderrEncoding: utf8,
+          );
+          final uninstallLines = [
+            (uninstall.stdout as String).trim(),
+            (uninstall.stderr as String).trim(),
+          ].where((s) => s.isNotEmpty).join('\n');
+          if (uninstallLines.isNotEmpty) {
+            installLog.value += '  $uninstallLines\n';
+          }
+
+          installLog.value +=
+              '  正在从 PyTorch GPU 源下载，文件约 1–2 GB，请耐心等待...\n';
+
+          final torchResult = await Process.run(
+            'pip',
+            [
+              'install', pkg,
+              '--index-url', torchIndexUrl,
+              '--no-warn-script-location',
+              '--timeout', '300',
+            ],
+            runInShell: true,
+            stdoutEncoding: utf8,
+            stderrEncoding: utf8,
+          );
+          final torchOut = (torchResult.stdout as String).trim();
+          final torchErr = (torchResult.stderr as String).trim();
+          if (torchOut.isNotEmpty) installLog.value += '$torchOut\n';
+          if (torchErr.isNotEmpty) installLog.value += '$torchErr\n';
+
+          if (torchResult.exitCode == 0) {
+            installLog.value += '✓ $pkg 安装成功\n\n';
+          } else {
+            failed.add(pkg);
+            installLog.value +=
+                '\n✗ $pkg 安装失败 (exit: ${torchResult.exitCode})\n\n';
+          }
+          continue; // 跳过下方通用安装逻辑
+        }
+
+        // ── 其余包：保持原有流式安装方式 ─────────────────────────────────
+        final pipArgs = ['install', pkg, '--no-warn-script-location'];
+
         final process = await Process.start(
           'pip',
-          ['install', pkg, '--no-warn-script-location'],
+          pipArgs,
           runInShell: true,
         );
 
-        // 收集全部输出
+        // 同时等待 stdout/stderr 流耗尽，避免输出截断
         final stdoutBuf = StringBuffer();
         final stderrBuf = StringBuffer();
-        process.stdout
-            .transform(utf8.decoder)
-            .listen((d) {
-          stdoutBuf.write(d);
-          installLog.value += d;
-        });
-        process.stderr
-            .transform(utf8.decoder)
-            .listen((d) {
-          stderrBuf.write(d);
-          installLog.value += d;
-        });
+        await Future.wait([
+          process.stdout.transform(utf8.decoder).forEach((d) {
+            stdoutBuf.write(d);
+            installLog.value += d;
+          }),
+          process.stderr.transform(utf8.decoder).forEach((d) {
+            stderrBuf.write(d);
+            installLog.value += d;
+          }),
+        ]);
 
         final code = await process.exitCode;
         if (code == 0) {
@@ -720,6 +914,93 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     }
   }
 
+  /// 安装 CUDA 扩展编译所需的轻量工具链：
+  ///   1. pip install ninja  （几 MB，构建系统）
+  ///   2. winget 仅安装 MSVC C++ 编译器 + Windows SDK（~1.5 GB，无 IDE）
+  Future<void> installBuildTools() async {
+    if (isBuildToolsInstalling.value) return;
+    isBuildToolsInstalling.value = true;
+    buildToolsLog.value = '';
+
+    try {
+      // ── 1. ninja ─────────────────────────────────────────────────
+      buildToolsLog.value += '▶ 安装 ninja 构建工具...\n';
+      final ninjaResult = await Process.run(
+        'pip', ['install', 'ninja', '--no-warn-script-location'],
+        runInShell: true, stdoutEncoding: utf8, stderrEncoding: utf8,
+      );
+      final ninjaOut = (ninjaResult.stdout as String).trim();
+      final ninjaErr = (ninjaResult.stderr as String).trim();
+      if (ninjaOut.isNotEmpty) buildToolsLog.value += '$ninjaOut\n';
+      if (ninjaErr.isNotEmpty) buildToolsLog.value += '$ninjaErr\n';
+      buildToolsLog.value += ninjaResult.exitCode == 0
+          ? '✓ ninja 安装成功\n\n'
+          : '✗ ninja 安装失败\n\n';
+
+      // ── 2. 检测是否已有 cl.exe ────────────────────────────────────
+      final clCheck = await Process.run(
+        'where', ['cl'],
+        runInShell: true, stdoutEncoding: utf8, stderrEncoding: utf8,
+      );
+      if (clCheck.exitCode == 0) {
+        buildToolsLog.value +=
+            '✓ 已检测到 MSVC cl.exe，无需重复安装\n'
+            '  ${(clCheck.stdout as String).trim()}\n';
+        Get.snackbar('编译工具', '已检测到 MSVC，无需重复安装',
+            snackPosition: SnackPosition.TOP);
+        return;
+      }
+
+      // ── 3. 用 winget 安装最小化 MSVC（仅编译器 + Windows SDK）────
+      buildToolsLog.value +=
+          '▶ 正在通过 winget 安装 MSVC C++ 编译器...\n'
+          '  仅安装编译器组件，约 1.5 GB（无 IDE）\n'
+          '  系统将弹出 UAC 权限提示，请点击「是」\n\n';
+
+      final msvcResult = await Process.run(
+        'winget',
+        [
+          'install',
+          '--id', 'Microsoft.VisualStudio.2022.BuildTools',
+          '--override',
+          '--passive --wait '
+              '--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 '
+              '--add Microsoft.VisualStudio.Component.Windows11SDK.22621',
+        ],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      final msvcOut = (msvcResult.stdout as String).trim();
+      final msvcErr = (msvcResult.stderr as String).trim();
+      if (msvcOut.isNotEmpty) buildToolsLog.value += '$msvcOut\n';
+      if (msvcErr.isNotEmpty) buildToolsLog.value += '$msvcErr\n';
+
+      if (msvcResult.exitCode == 0) {
+        buildToolsLog.value +=
+            '\n✓ MSVC 编译工具安装完成！\n'
+            '  请重启应用后重新运行训练\n';
+        Get.snackbar('安装完成', 'MSVC 已安装，请重启应用后再训练',
+            snackPosition: SnackPosition.TOP,
+            duration: const Duration(seconds: 6));
+      } else {
+        buildToolsLog.value +=
+            '\n✗ winget 安装失败 (exit: ${msvcResult.exitCode})\n'
+            '  请手动下载 VS Build Tools（免费，仅选 C++ 编译器）：\n'
+            '  https://aka.ms/vs/17/release/vs_buildtools.exe\n'
+            '  安装时只勾选 "MSVC v143" 和 "Windows SDK" 两项即可\n';
+        Get.snackbar('安装失败', '请手动安装 VS Build Tools',
+            snackPosition: SnackPosition.TOP,
+            duration: const Duration(seconds: 8));
+      }
+    } catch (e) {
+      buildToolsLog.value += '异常: $e\n';
+      Get.snackbar('安装失败', '$e');
+    } finally {
+      isBuildToolsInstalling.value = false;
+    }
+  }
+
   Future<void> checkEnvironment() async {
     if (isChecking.value) return;
     isChecking.value = true;
@@ -741,12 +1022,52 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           missing.add(pkg);
         }
       }
+
+      // 额外检测 torch 是否为 GPU (CUDA) 版本
+      bool torchHasCuda = false;
+      if (!missing.contains('torch')) {
+        checkLog.value += '\n▶ 检测 torch CUDA 支持...\n';
+        final cudaCheck = await Process.run(
+          'python',
+          [
+            '-c',
+            'import torch; '
+                'avail = torch.cuda.is_available(); '
+                'ver = torch.version.cuda or "N/A"; '
+                'print(f"cuda_available={avail}  cuda_version={ver}"); '
+                'exit(0 if avail else 1)',
+          ],
+          runInShell: true,
+          stdoutEncoding: utf8,
+          stderrEncoding: utf8,
+        );
+        final cudaOut = (cudaCheck.stdout as String).trim();
+        if (cudaCheck.exitCode == 0) {
+          torchHasCuda = true;
+          checkLog.value += '✓ torch GPU (CUDA) 版本正常  [$cudaOut]\n';
+        } else {
+          checkLog.value +=
+              '✗ torch 未检测到 CUDA GPU 支持（当前为 CPU 版本）\n'
+              '  请点击「一键安装」重新安装 GPU 版本 torch\n';
+          if (cudaOut.isNotEmpty) checkLog.value += '  详情: $cudaOut\n';
+          missing.add('torch(CUDA)');
+        }
+      }
+
       if (missing.isEmpty) {
         envReady.value = true;
         checkLog.value += '\n所有环境已经准备好';
         Get.snackbar('环境检测', '所有环境已准备好', snackPosition: SnackPosition.TOP);
       } else {
-        checkLog.value += '\n缺少: ${missing.join(", ")}';
+        checkLog.value += '\n缺少或需重装: ${missing.join(", ")}';
+        if (!torchHasCuda && missing.contains('torch(CUDA)')) {
+          Get.snackbar(
+            '环境检测',
+            'torch 未启用 CUDA，请点击「一键安装」安装 GPU 版本',
+            snackPosition: SnackPosition.TOP,
+            duration: const Duration(seconds: 5),
+          );
+        }
       }
     } catch (e) {
       checkLog.value += '检测异常: $e';

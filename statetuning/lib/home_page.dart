@@ -862,7 +862,11 @@ class HomePage extends GetView<HomeController> {
                 border: Border.all(color: const Color(0xFF3A3F47)),
               ),
               child: const SelectableText(
-                'torch>=2.0.0\ntransformers>=4.30.0\ntqdm>=4.65.0\nhuggingface-hub',
+                'torch>=2.0.0  [GPU/CUDA 版本，自动匹配 CUDA 版本号]\n'
+                'transformers>=4.30.0\n'
+                'tqdm>=4.65.0\n'
+                'huggingface-hub\n'
+                'ninja          [CUDA 扩展构建工具]',
                 style: TextStyle(
                     color: Color(0xFF86EFAC),
                     fontSize: 12,
@@ -941,6 +945,51 @@ class HomePage extends GetView<HomeController> {
             const SizedBox(height: 8),
             Obx(() => _logBox(controller.checkLog.value,
                 placeholder: '点击「检测环境」按钮检查依赖是否已安装')),
+            const SizedBox(height: 24),
+            const Divider(color: Color(0xFF3A3F47)),
+            const SizedBox(height: 16),
+            const Text(
+              'CUDA 编译工具',
+              style: TextStyle(
+                  color: Color(0xFFE2E8F0),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '训练时需要实时编译 CUDA 内核（rwkv7_state_clampw），'
+              '必须安装 MSVC C++ 编译器。\n'
+              '点击下方按钮自动安装轻量版编译工具（约 1.5 GB，无 IDE）：\n'
+              '  • ninja  — 构建系统（pip 安装，几 MB）\n'
+              '  • MSVC C++ 编译器 + Windows SDK（通过 winget 安装）',
+              style: TextStyle(
+                  color: Color(0xFFB0B5BC), fontSize: 13, height: 1.6),
+            ),
+            const SizedBox(height: 12),
+            Obx(() => SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: controller.isBuildToolsInstalling.value
+                        ? null
+                        : controller.installBuildTools,
+                    icon: controller.isBuildToolsInstalling.value
+                        ? const SizedBox(
+                            width: 20, height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.build),
+                    label: Text(controller.isBuildToolsInstalling.value
+                        ? '安装中...'
+                        : '安装编译工具（ninja + MSVC）'),
+                    style: _btnStyle(const Color(0xFF7C3AED)),
+                  ),
+                )),
+            const SizedBox(height: 12),
+            _logLabel('编译工具安装日志'),
+            const SizedBox(height: 8),
+            Obx(() => _logBox(controller.buildToolsLog.value,
+                placeholder: '点击「安装编译工具」开始安装...')),
           ],
         ),
     );
