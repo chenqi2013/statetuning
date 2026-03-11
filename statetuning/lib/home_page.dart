@@ -182,7 +182,9 @@ class HomePage extends GetView<HomeController> {
             child: _labeledField(
               '预训练模型 (.pth)',
               controller.modelPathController,
-              hint: '/path/to/rwkv7-xxx.pth',
+              hint: '点击右侧按钮选择文件',
+              onBrowse: controller.pickModelFile,
+              browseIcon: Icons.file_open,
             ),
           ),
           const SizedBox(height: 20),
@@ -291,7 +293,8 @@ class HomePage extends GetView<HomeController> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _labeledField('本地路径', controller.repoPathController,
-                    hint: 'C:\\statetuning  或  /home/user/statetuning'),
+                    hint: '点击右侧按钮选择文件夹',
+                    onBrowse: controller.pickRepoDir),
                 const SizedBox(height: 14),
                 Row(
                   children: [
@@ -336,7 +339,9 @@ class HomePage extends GetView<HomeController> {
             child: Column(
               children: [
                 _labeledField('JSONL 数据文件路径', controller.dataPathController,
-                    hint: '/path/to/data.jsonl'),
+                    hint: '点击右侧按钮选择文件',
+                    onBrowse: controller.pickDataFile,
+                    browseIcon: Icons.file_open),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -370,7 +375,8 @@ class HomePage extends GetView<HomeController> {
           _sectionCard(
             title: '输出目录',
             child: _labeledField('输出目录', controller.outputDirController,
-                hint: './outmodel'),
+                hint: '点击右侧按钮选择文件夹',
+                onBrowse: controller.pickOutputDir),
           ),
           const SizedBox(height: 24),
           SizedBox(
@@ -766,7 +772,7 @@ class HomePage extends GetView<HomeController> {
                 border: Border.all(color: const Color(0xFF3A3F47)),
               ),
               child: const SelectableText(
-                'torch>=2.0.0\ntransformers>=4.30.0\ntqdm>=4.65.0\nhuggingface-hub>=0.34.0,<1.0',
+                'torch>=2.0.0\ntransformers>=4.30.0\ntqdm>=4.65.0\nhuggingface-hub',
                 style: TextStyle(
                     color: Color(0xFF86EFAC),
                     fontSize: 12,
@@ -882,6 +888,8 @@ class HomePage extends GetView<HomeController> {
     TextEditingController ctrl, {
     String hint = '',
     TextInputType keyboardType = TextInputType.text,
+    VoidCallback? onBrowse,
+    IconData browseIcon = Icons.folder_open,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -889,30 +897,56 @@ class HomePage extends GetView<HomeController> {
         Text(label,
             style: const TextStyle(color: Color(0xFFB0B5BC), fontSize: 13)),
         const SizedBox(height: 6),
-        TextField(
-          controller: ctrl,
-          keyboardType: keyboardType,
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(color: Color(0xFF4B5563), fontSize: 13),
-            filled: true,
-            fillColor: const Color(0xFF1A1D21),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFF3A3F47)),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: ctrl,
+                keyboardType: keyboardType,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: hint,
+                  hintStyle:
+                      const TextStyle(color: Color(0xFF4B5563), fontSize: 13),
+                  filled: true,
+                  fillColor: const Color(0xFF1A1D21),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF3A3F47)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF3A3F47)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF3B82F6)),
+                  ),
+                ),
+              ),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFF3A3F47)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFF3B82F6)),
-            ),
-          ),
+            if (onBrowse != null) ...[
+              const SizedBox(width: 8),
+              Tooltip(
+                message: '浏览',
+                child: Material(
+                  color: const Color(0xFF3A3F47),
+                  borderRadius: BorderRadius.circular(8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: onBrowse,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Icon(browseIcon,
+                          color: const Color(0xFFB0B5BC), size: 20),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ],
     );

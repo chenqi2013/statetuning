@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -71,7 +72,7 @@ class HomeController extends GetxController {
     'torch>=2.0.0',
     'transformers>=4.30.0',
     'tqdm>=4.65.0',
-    'huggingface-hub>=0.34.0,<1.0',
+    'huggingface-hub',
   ];
   static const _envCheckPackages = [
     'torch',
@@ -207,6 +208,55 @@ class HomeController extends GetxController {
       }
     } catch (_) {
       gpuInfo.value = '未检测到 GPU';
+    }
+  }
+
+  // --- File / Folder Pickers ---
+
+  Future<void> pickRepoDir() async {
+    final path = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: '选择 statetuning 仓库目录',
+    );
+    if (path != null) {
+      repoPath.value = path;
+      repoPathController.text = path;
+      await checkRepo();
+    }
+  }
+
+  Future<void> pickModelFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      dialogTitle: '选择 RWKV7 模型文件 (.pth)',
+      type: FileType.custom,
+      allowedExtensions: ['pth'],
+    );
+    if (result != null && result.files.single.path != null) {
+      final path = result.files.single.path!;
+      modelPath.value = path;
+      modelPathController.text = path;
+    }
+  }
+
+  Future<void> pickDataFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      dialogTitle: '选择训练数据文件 (.jsonl)',
+      type: FileType.custom,
+      allowedExtensions: ['jsonl', 'json'],
+    );
+    if (result != null && result.files.single.path != null) {
+      final path = result.files.single.path!;
+      dataPath.value = path;
+      dataPathController.text = path;
+    }
+  }
+
+  Future<void> pickOutputDir() async {
+    final path = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: '选择输出目录',
+    );
+    if (path != null) {
+      outputDir.value = path;
+      outputDirController.text = path;
     }
   }
 
@@ -473,37 +523,91 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   Future<void> installEnvironment() async {
     if (isInstalling.value) return;
     isInstalling.value = true;
-    installLog.value = '正在检测 Python 环境...\n';
+    installLog.value = '';
+
     try {
-      final pipCheck = await Process.run(
+      // ── 1. 检测 pip ───────────────────────────────────────────────
+      installLog.value += '▶ 检测 Python / pip 环境...\n';
+      final pipResult = await Process.run(
         'pip', ['--version'],
-        runInShell: true, stdoutEncoding: null,
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
       );
-      if (pipCheck.exitCode != 0) {
-        installLog.value += '错误: 未找到 pip，请先安装 Python 并确保已添加到 PATH\n';
+      if (pipResult.exitCode != 0) {
+        installLog.value += '✗ 未找到 pip，请先安装 Python 并确保已添加到 PATH\n';
         Get.snackbar('安装失败', '未找到 pip，请先安装 Python');
         return;
       }
-      installLog.value += 'pip 已就绪\n\n正在安装:\n${_envPackages.join("\n")}\n\n';
+      installLog.value += '✓ ${(pipResult.stdout as String).trim()}\n';
 
-      final process = await Process.start(
-        'pip', ['install', ..._envPackages],
+      // ── 2. 显示 pip 源（方便排查网络问题）──────────────────────────
+      final indexResult = await Process.run(
+        'pip', ['config', 'get', 'global.index-url'],
         runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
       );
-      process.stdout.transform(utf8.decoder).listen((d) => installLog.value += d);
-      process.stderr.transform(utf8.decoder).listen((d) => installLog.value += d);
+      final indexUrl = (indexResult.stdout as String).trim();
+      installLog.value +=
+          '  pip 源: ${indexUrl.isNotEmpty ? indexUrl : "(默认 PyPI)"}\n\n';
 
-      final exitCode = await process.exitCode;
-      if (exitCode == 0) {
-        installLog.value += '\n✓ 环境安装完成';
-        Get.snackbar('安装成功', '依赖包已安装完成');
+      // ── 3. 逐包安装 ───────────────────────────────────────────────
+      final failed = <String>[];
+      for (final pkg in _envPackages) {
+        installLog.value += '─' * 50 + '\n';
+        installLog.value += '▶ 安装 $pkg ...\n';
+
+        final process = await Process.start(
+          'pip',
+          ['install', pkg, '--no-warn-script-location'],
+          runInShell: true,
+        );
+
+        // 收集全部输出
+        final stdoutBuf = StringBuffer();
+        final stderrBuf = StringBuffer();
+        process.stdout
+            .transform(utf8.decoder)
+            .listen((d) {
+          stdoutBuf.write(d);
+          installLog.value += d;
+        });
+        process.stderr
+            .transform(utf8.decoder)
+            .listen((d) {
+          stderrBuf.write(d);
+          installLog.value += d;
+        });
+
+        final code = await process.exitCode;
+        if (code == 0) {
+          installLog.value += '✓ $pkg 安装成功\n\n';
+        } else {
+          failed.add(pkg);
+          installLog.value += '\n✗ $pkg 安装失败 (exit: $code)\n\n';
+        }
+      }
+
+      // ── 4. 汇总结果 ───────────────────────────────────────────────
+      installLog.value += '=' * 50 + '\n';
+      if (failed.isEmpty) {
+        installLog.value += '✓ 全部依赖安装完成！\n';
+        Get.snackbar('安装成功', '全部依赖已安装完成');
         await checkEnvironment();
       } else {
-        installLog.value += '\n✗ 安装过程中出现错误 (exit: $exitCode)';
-        Get.snackbar('安装异常', '请查看日志，部分包可能安装失败');
+        installLog.value += '✗ 以下包安装失败，请查看上方日志：\n';
+        for (final f in failed) {
+          installLog.value += '   • $f\n';
+        }
+        Get.snackbar(
+          '安装部分失败',
+          '${failed.join("、")} 安装失败，请查看日志',
+          duration: const Duration(seconds: 6),
+        );
       }
     } catch (e) {
-      installLog.value += '异常: $e';
+      installLog.value += '\n异常: $e';
       Get.snackbar('安装失败', '$e');
     } finally {
       isInstalling.value = false;
