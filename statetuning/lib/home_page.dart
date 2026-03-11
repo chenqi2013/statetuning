@@ -288,48 +288,60 @@ class HomePage extends GetView<HomeController> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionCard(
-            title: '仓库路径 (github.com/Joluck/statetuning)',
+            title: '仓库来源 (github.com/Joluck/statetuning)',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _labeledField('本地路径', controller.repoPathController,
-                    hint: '点击右侧按钮选择文件夹',
+                // 路径输入 + 浏览已有文件夹
+                _labeledField('本地仓库路径', controller.repoPathController,
+                    hint: '选择或填写仓库所在文件夹',
                     onBrowse: controller.pickRepoDir),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Obx(() => Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: controller.isCloningRepo.value
-                                ? null
-                                : controller.cloneRepo,
-                            icon: controller.isCloningRepo.value
-                                ? const SizedBox(
-                                    width: 18, height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white),
-                                  )
-                                : const Icon(Icons.download),
-                            label: Text(controller.isCloningRepo.value
-                                ? '克隆中...'
-                                : '克隆仓库'),
-                            style: _btnStyle(const Color(0xFF6366F1)),
-                          ),
-                        )),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: controller.checkRepo,
-                        icon: const Icon(Icons.folder_open),
-                        label: const Text('检查路径'),
-                        style: _btnStyle(const Color(0xFF6B7280)),
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 4),
+                const Text(
+                  '选择文件夹后自动检测；或使用下方按钮获取仓库',
+                  style: TextStyle(color: Color(0xFF4B5563), fontSize: 12),
                 ),
+                const SizedBox(height: 14),
+                // 操作按钮
+                Obx(() {
+                  final busy = controller.isCloningRepo.value;
+                  return Row(
+                    children: [
+                      // 从 GitHub 克隆
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: busy ? null : controller.cloneRepo,
+                          icon: busy
+                              ? const SizedBox(
+                                  width: 16, height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.download, size: 18),
+                          label: Text(
+                              busy ? '克隆中...' : '从 GitHub 克隆',
+                              style: const TextStyle(fontSize: 13)),
+                          style: _btnStyle(const Color(0xFF6366F1)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // 检查路径
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: busy ? null : controller.checkRepo,
+                          icon: const Icon(Icons.check_circle_outline, size: 18),
+                          label: const Text('检查路径',
+                              style: TextStyle(fontSize: 13)),
+                          style: _btnStyle(const Color(0xFF6B7280)),
+                        ),
+                      ),
+                    ],
+                  );
+                }),
                 const SizedBox(height: 12),
                 Obx(() => _logBox(controller.repoLog.value,
-                    minHeight: 60, placeholder: '点击「检查路径」或「克隆仓库」')),
+                    minHeight: 60,
+                    placeholder: '选择文件夹 / 解压 ZIP / 克隆仓库后状态显示在此')),
               ],
             ),
           ),
