@@ -54,6 +54,10 @@ class HomeController extends GetxController {
   final numEpochs = 1.obs;
   final learningRate = '1e-5'.obs;
 
+  // --- CUDA ---
+  final cudaHome = ''.obs;
+  final cudaDetectLog = ''.obs;
+
   // --- Training State ---
   final isTraining = false.obs;
   final trainingLog = ''.obs;
@@ -99,6 +103,7 @@ class HomeController extends GetxController {
   late final TextEditingController numStepsController;
   late final TextEditingController numEpochsController;
   late final TextEditingController learningRateController;
+  late final TextEditingController cudaHomeController;
 
   @override
   void onInit() {
@@ -115,6 +120,7 @@ class HomeController extends GetxController {
     numStepsController = TextEditingController(text: numSteps.value.toString());
     numEpochsController = TextEditingController(text: numEpochs.value.toString());
     learningRateController = TextEditingController(text: learningRate.value);
+    cudaHomeController = TextEditingController(text: cudaHome.value);
 
     vocabSizeController.addListener(() {
       final v = int.tryParse(vocabSizeController.text);
@@ -149,8 +155,10 @@ class HomeController extends GetxController {
       if (v != null && v > 0) numEpochs.value = v;
     });
     learningRateController.addListener(() => learningRate.value = learningRateController.text);
+    cudaHomeController.addListener(() => cudaHome.value = cudaHomeController.text);
 
     _detectGpu();
+    detectCudaHome();
   }
 
   @override
@@ -159,6 +167,7 @@ class HomeController extends GetxController {
       vocabSizeController, nEmbdController, nLayerController, ctxLenController,
       modelPathController, dataPathController, outputDirController, repoPathController,
       batchSizeController, numStepsController, numEpochsController, learningRateController,
+      cudaHomeController,
     ]) {
       c.dispose();
     }
@@ -208,6 +217,82 @@ class HomeController extends GetxController {
       }
     } catch (_) {
       gpuInfo.value = '未检测到 GPU';
+    }
+  }
+
+  // --- CUDA Detection ---
+
+  /// 自动查找 CUDA 安装路径（Windows 常见位置 + 环境变量）
+  Future<void> detectCudaHome() async {
+    cudaDetectLog.value = '▶ 正在检测 CUDA 安装路径...\n';
+
+    // 1. 先读系统环境变量
+    final envCuda = Platform.environment['CUDA_HOME'] ??
+        Platform.environment['CUDA_PATH'];
+    if (envCuda != null && envCuda.isNotEmpty) {
+      final nvcc = File('$envCuda${Platform.pathSeparator}bin${Platform.pathSeparator}nvcc.exe');
+      if (await nvcc.exists()) {
+        _setCudaHome(envCuda);
+        cudaDetectLog.value += '✓ 从环境变量检测到: $envCuda\n';
+        return;
+      }
+    }
+
+    // 2. 扫描 Windows 默认安装目录
+    final searchRoots = [
+      r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA',
+      r'C:\CUDA',
+    ];
+    for (final root in searchRoots) {
+      final dir = Directory(root);
+      if (!await dir.exists()) continue;
+      final versions = <String>[];
+      await for (final entry in dir.list()) {
+        if (entry is Directory) versions.add(entry.path);
+      }
+      if (versions.isNotEmpty) {
+        // 取版本号最大的
+        versions.sort();
+        final latest = versions.last;
+        final nvcc = File('$latest${Platform.pathSeparator}bin${Platform.pathSeparator}nvcc.exe');
+        if (await nvcc.exists()) {
+          _setCudaHome(latest);
+          cudaDetectLog.value += '✓ 自动检测到: $latest\n';
+          return;
+        }
+      }
+    }
+
+    // 3. 尝试从 nvcc 命令反推路径
+    try {
+      final r = await Process.run('where', ['nvcc'], runInShell: true,
+          stdoutEncoding: utf8, stderrEncoding: utf8);
+      if (r.exitCode == 0) {
+        final nvccPath = (r.stdout as String).trim().split('\n').first.trim();
+        // nvccPath = C:\...\CUDA\v12.x\bin\nvcc.exe  → 取上两级
+        final home = File(nvccPath).parent.parent.path;
+        _setCudaHome(home);
+        cudaDetectLog.value += '✓ 从 nvcc 命令检测到: $home\n';
+        return;
+      }
+    } catch (_) {}
+
+    cudaDetectLog.value += '✗ 未自动检测到 CUDA，请手动选择安装目录\n'
+        '  常见路径: C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.x\n';
+  }
+
+  void _setCudaHome(String path) {
+    cudaHome.value = path;
+    cudaHomeController.text = path;
+  }
+
+  Future<void> pickCudaHomeDir() async {
+    final path = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: '选择 CUDA 安装目录（包含 bin/nvcc.exe 的上级目录）',
+    );
+    if (path != null) {
+      _setCudaHome(path);
+      cudaDetectLog.value = '✓ 手动设置: $path\n';
     }
   }
 
@@ -324,9 +409,29 @@ class HomeController extends GetxController {
   /// but with all config values injected by Flutter.
   String _buildTrainingScript() {
     final p = precisionString;
-    return '''import os, sys
+    final cudaHomeStr = cudaHome.value;
+    return '''import os, sys, glob
 sys.path.insert(0, r"${repoPath.value}")
 os.chdir(r"${repoPath.value}")
+
+# ── CUDA_HOME 设置（由 Flutter 注入或自动检测）──────────────────────
+_cuda_home = r"$cudaHomeStr"
+if not _cuda_home:
+    # 未手动指定时自动扫描 Windows 默认安装路径
+    for _root in [
+        r"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA",
+        r"C:\\CUDA",
+    ]:
+        _candidates = sorted(glob.glob(f"{_root}\\\\v*"), reverse=True)
+        if _candidates:
+            _cuda_home = _candidates[0]
+            break
+if _cuda_home:
+    os.environ.setdefault("CUDA_HOME", _cuda_home)
+    os.environ.setdefault("CUDA_PATH", _cuda_home)
+    print(f"CUDA_HOME = {_cuda_home}")
+else:
+    print("WARNING: CUDA_HOME not found, CUDA kernel compilation may fail")
 
 os.environ["WKV"] = "CUDA"
 os.environ["FUSED_KERNEL"] = "0"

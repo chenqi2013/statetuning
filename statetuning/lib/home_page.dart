@@ -764,7 +764,85 @@ class HomePage extends GetView<HomeController> {
   Widget _buildSettingsTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: _sectionCard(
+      child: Column(
+        children: [
+          _buildCudaCard(),
+          const SizedBox(height: 20),
+          _buildEnvCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCudaCard() {
+    return _sectionCard(
+      title: 'CUDA 配置',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'RWKV7 训练需要 CUDA_HOME 环境变量指向 CUDA 安装目录。\n'
+            '启动时会自动检测，也可手动选择。',
+            style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 14),
+          _labeledField(
+            'CUDA 安装目录',
+            controller.cudaHomeController,
+            hint: r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x',
+            onBrowse: controller.pickCudaHomeDir,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: controller.detectCudaHome,
+                icon: const Icon(Icons.search, size: 18),
+                label: const Text('自动检测'),
+                style: _btnStyle(const Color(0xFF3B82F6), compact: true),
+              ),
+              const SizedBox(width: 12),
+              // 检测结果状态指示
+              Obx(() {
+                final path = controller.cudaHome.value;
+                if (path.isEmpty) {
+                  return const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded,
+                          color: Color(0xFFFBBF24), size: 18),
+                      SizedBox(width: 6),
+                      Text('未设置，训练时将尝试自动检测',
+                          style: TextStyle(
+                              color: Color(0xFFFBBF24), fontSize: 13)),
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    const Icon(Icons.check_circle,
+                        color: Color(0xFF22C55E), size: 18),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(path,
+                          style: const TextStyle(
+                              color: Color(0xFF22C55E), fontSize: 13),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                  ],
+                );
+              }),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Obx(() => _logBox(controller.cudaDetectLog.value,
+              minHeight: 50, placeholder: '点击「自动检测」检查 CUDA 安装')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnvCard() {
+    return _sectionCard(
         title: '环境配置',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -865,7 +943,6 @@ class HomePage extends GetView<HomeController> {
                 placeholder: '点击「检测环境」按钮检查依赖是否已安装')),
           ],
         ),
-      ),
     );
   }
 
