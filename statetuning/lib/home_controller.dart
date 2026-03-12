@@ -114,7 +114,9 @@ class HomeController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    vocabSizeController = TextEditingController(text: vocabSize.value.toString());
+    vocabSizeController = TextEditingController(
+      text: vocabSize.value.toString(),
+    );
     nEmbdController = TextEditingController(text: nEmbd.value.toString());
     nLayerController = TextEditingController(text: nLayer.value.toString());
     ctxLenController = TextEditingController(text: ctxLen.value.toString());
@@ -122,9 +124,13 @@ class HomeController extends GetxController {
     dataPathController = TextEditingController(text: dataPath.value);
     outputDirController = TextEditingController(text: outputDir.value);
     repoPathController = TextEditingController(text: repoPath.value);
-    batchSizeController = TextEditingController(text: batchSize.value.toString());
+    batchSizeController = TextEditingController(
+      text: batchSize.value.toString(),
+    );
     numStepsController = TextEditingController(text: numSteps.value.toString());
-    numEpochsController = TextEditingController(text: numEpochs.value.toString());
+    numEpochsController = TextEditingController(
+      text: numEpochs.value.toString(),
+    );
     learningRateController = TextEditingController(text: learningRate.value);
     cudaHomeController = TextEditingController(text: cudaHome.value);
 
@@ -144,10 +150,18 @@ class HomeController extends GetxController {
       final v = int.tryParse(ctxLenController.text);
       if (v != null && v > 0) ctxLen.value = v;
     });
-    modelPathController.addListener(() => modelPath.value = modelPathController.text);
-    dataPathController.addListener(() => dataPath.value = dataPathController.text);
-    outputDirController.addListener(() => outputDir.value = outputDirController.text);
-    repoPathController.addListener(() => repoPath.value = repoPathController.text);
+    modelPathController.addListener(
+      () => modelPath.value = modelPathController.text,
+    );
+    dataPathController.addListener(
+      () => dataPath.value = dataPathController.text,
+    );
+    outputDirController.addListener(
+      () => outputDir.value = outputDirController.text,
+    );
+    repoPathController.addListener(
+      () => repoPath.value = repoPathController.text,
+    );
     batchSizeController.addListener(() {
       final v = int.tryParse(batchSizeController.text);
       if (v != null && v > 0) batchSize.value = v;
@@ -160,8 +174,12 @@ class HomeController extends GetxController {
       final v = int.tryParse(numEpochsController.text);
       if (v != null && v > 0) numEpochs.value = v;
     });
-    learningRateController.addListener(() => learningRate.value = learningRateController.text);
-    cudaHomeController.addListener(() => cudaHome.value = cudaHomeController.text);
+    learningRateController.addListener(
+      () => learningRate.value = learningRateController.text,
+    );
+    cudaHomeController.addListener(
+      () => cudaHome.value = cudaHomeController.text,
+    );
 
     _detectGpu();
     detectCudaHome();
@@ -170,9 +188,18 @@ class HomeController extends GetxController {
   @override
   void onClose() {
     for (final c in [
-      vocabSizeController, nEmbdController, nLayerController, ctxLenController,
-      modelPathController, dataPathController, outputDirController, repoPathController,
-      batchSizeController, numStepsController, numEpochsController, learningRateController,
+      vocabSizeController,
+      nEmbdController,
+      nLayerController,
+      ctxLenController,
+      modelPathController,
+      dataPathController,
+      outputDirController,
+      repoPathController,
+      batchSizeController,
+      numStepsController,
+      numEpochsController,
+      learningRateController,
       cudaHomeController,
     ]) {
       c.dispose();
@@ -210,7 +237,10 @@ class HomeController extends GetxController {
     try {
       final result = await Process.run(
         'python',
-        ['-c', 'import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No CUDA GPU")'],
+        [
+          '-c',
+          'import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No CUDA GPU")',
+        ],
         runInShell: true,
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
@@ -233,10 +263,12 @@ class HomeController extends GetxController {
     cudaDetectLog.value = '▶ 正在检测 CUDA 安装路径...\n';
 
     // 1. 先读系统环境变量
-    final envCuda = Platform.environment['CUDA_HOME'] ??
-        Platform.environment['CUDA_PATH'];
+    final envCuda =
+        Platform.environment['CUDA_HOME'] ?? Platform.environment['CUDA_PATH'];
     if (envCuda != null && envCuda.isNotEmpty) {
-      final nvcc = File('$envCuda${Platform.pathSeparator}bin${Platform.pathSeparator}nvcc.exe');
+      final nvcc = File(
+        '$envCuda${Platform.pathSeparator}bin${Platform.pathSeparator}nvcc.exe',
+      );
       if (await nvcc.exists()) {
         _setCudaHome(envCuda);
         cudaDetectLog.value += '✓ 从环境变量检测到: $envCuda\n';
@@ -260,7 +292,9 @@ class HomeController extends GetxController {
         // 取版本号最大的
         versions.sort();
         final latest = versions.last;
-        final nvcc = File('$latest${Platform.pathSeparator}bin${Platform.pathSeparator}nvcc.exe');
+        final nvcc = File(
+          '$latest${Platform.pathSeparator}bin${Platform.pathSeparator}nvcc.exe',
+        );
         if (await nvcc.exists()) {
           _setCudaHome(latest);
           cudaDetectLog.value += '✓ 自动检测到: $latest\n';
@@ -271,8 +305,13 @@ class HomeController extends GetxController {
 
     // 3. 尝试从 nvcc 命令反推路径
     try {
-      final r = await Process.run('where', ['nvcc'], runInShell: true,
-          stdoutEncoding: utf8, stderrEncoding: utf8);
+      final r = await Process.run(
+        'where',
+        ['nvcc'],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
       if (r.exitCode == 0) {
         final nvccPath = (r.stdout as String).trim().split('\n').first.trim();
         // nvccPath = C:\...\CUDA\v12.x\bin\nvcc.exe  → 取上两级
@@ -283,7 +322,8 @@ class HomeController extends GetxController {
       }
     } catch (_) {}
 
-    cudaDetectLog.value += '✗ 未自动检测到 CUDA，请手动选择安装目录\n'
+    cudaDetectLog.value +=
+        '✗ 未自动检测到 CUDA，请手动选择安装目录\n'
         '  常见路径: C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.x\n';
   }
 
@@ -333,7 +373,6 @@ class HomeController extends GetxController {
     }
   }
 
-
   Future<void> pickModelFile() async {
     final result = await FilePicker.platform.pickFiles(
       dialogTitle: '选择 RWKV7 模型文件 (.pth)',
@@ -344,7 +383,58 @@ class HomeController extends GetxController {
       final path = result.files.single.path!;
       modelPath.value = path;
       modelPathController.text = path;
+      await _autoDetectModelShape(path);
     }
+  }
+
+  /// 读取 .pth checkpoint，自动检测并更新模型尺寸参数。
+  Future<void> _autoDetectModelShape(String pthPath) async {
+    try {
+      final result = await Process.run(
+        'python',
+        [
+          '-X', 'utf8', '-c',
+          'import torch, re, sys\n'
+          'ckpt = torch.load(sys.argv[1], map_location="cpu", weights_only=True)\n'
+          'n_embd = ckpt["head.weight"].shape[1] if "head.weight" in ckpt else -1\n'
+          'vocab  = ckpt["head.weight"].shape[0] if "head.weight" in ckpt else -1\n'
+          'layers = max((int(re.match(r"blocks\\.(\\d+)\\.", k).group(1)) for k in ckpt if re.match(r"blocks\\.(\\d+)\\.", k)), default=-1) + 1\n'
+          'print(f"{n_embd},{vocab},{layers}")',
+          pthPath,
+        ],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      if (result.exitCode != 0) return;
+      final parts = (result.stdout as String).trim().split(',');
+      if (parts.length < 3) return;
+      final detectedEmbd   = int.tryParse(parts[0]) ?? -1;
+      final detectedVocab  = int.tryParse(parts[1]) ?? -1;
+      final detectedLayers = int.tryParse(parts[2]) ?? -1;
+      if (detectedEmbd > 0) {
+        nEmbd.value = detectedEmbd;
+        nEmbdController.text = '$detectedEmbd';
+      }
+      if (detectedVocab > 0) {
+        vocabSize.value = detectedVocab;
+        vocabSizeController.text = '$detectedVocab';
+      }
+      if (detectedLayers > 0) {
+        nLayer.value = detectedLayers;
+        nLayerController.text = '$detectedLayers';
+      }
+      if (detectedEmbd > 0) {
+        // 自动匹配预设名称（仅更新标签，不强制）
+        selectedPreset.value = '自定义';
+        Get.snackbar(
+          '模型尺寸已自动检测',
+          'n_embd=$detectedEmbd  n_layer=$detectedLayers  vocab=$detectedVocab',
+          snackPosition: SnackPosition.TOP,
+          duration: const Duration(seconds: 4),
+        );
+      }
+    } catch (_) {}
   }
 
   Future<void> pickDataFile() async {
@@ -377,7 +467,9 @@ class HomeController extends GetxController {
       Get.snackbar('提示', '请先输入仓库路径');
       return;
     }
-    final trainFile = File('${repoPath.value}${Platform.pathSeparator}train.py');
+    final trainFile = File(
+      '${repoPath.value}${Platform.pathSeparator}train.py',
+    );
     if (await trainFile.exists()) {
       repoCloned.value = true;
       repoLog.value = '✓ 仓库已就绪: ${repoPath.value}';
@@ -538,6 +630,8 @@ except Exception as _e:
     print(f"[BUILD] nvcc not reachable: {_e}")
 
 os.environ["WKV"] = "CUDA"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512,garbage_collection_threshold:0.8"
+os.environ["VSLANG"] = "1033"  # 强制 MSVC cl.exe 输出英文，避免 GBK 乱码
 os.environ["FUSED_KERNEL"] = "0"
 os.environ["RWKV_TRAIN_TYPE"] = "none"
 os.environ["RWKV_HEAD_SIZE_A"] = "64"
@@ -605,18 +699,37 @@ class TrainArgs:
 
 
 model_args = ModelArgs()
-model_args.dim_att = model_args.n_embd
-model_args.dim_ffn = model_args.n_embd * 4
 train_args = TrainArgs()
 
-print("Loading model from:", train_args.load_model)
-model = RWKV7(model_args)
+# ── 从 checkpoint 自动检测模型尺寸，避免 UI 配置与权重不匹配 ─────────
+print(f"Loading model from: {train_args.load_model}")
+_ckpt = torch.load(train_args.load_model, map_location="cpu", weights_only=True)
+if "head.weight" in _ckpt:
+    _detected_vocab = _ckpt["head.weight"].shape[0]
+    _detected_embd  = _ckpt["head.weight"].shape[1]
+    if _detected_embd != model_args.n_embd or _detected_vocab != model_args.vocab_size:
+        print(f"[AUTO] 检测到模型尺寸与 UI 配置不符，自动修正：")
+        print(f"[AUTO]   n_embd:    {model_args.n_embd} → {_detected_embd}")
+        print(f"[AUTO]   vocab_size: {model_args.vocab_size} → {_detected_vocab}")
+        model_args.n_embd    = _detected_embd
+        model_args.vocab_size = _detected_vocab
+import re as _re
+_detected_layers = max(
+    (int(_re.match(r"blocks\.(\d+)\.", k).group(1)) for k in _ckpt if _re.match(r"blocks\.(\d+)\.", k)),
+    default=model_args.n_layer - 1
+) + 1
+if _detected_layers != model_args.n_layer:
+    print(f"[AUTO]   n_layer:   {model_args.n_layer} → {_detected_layers}")
+    model_args.n_layer = _detected_layers
+model_args.dim_att = model_args.n_embd
+model_args.dim_ffn = model_args.n_embd * 4
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Device: {device}")
+model = RWKV7(model_args)
 model = model.to(device)
-
-state_dict = torch.load(train_args.load_model, map_location="cpu", weights_only=True)
-model.load_state_dict(state_dict, strict=False)
+model.load_state_dict(_ckpt, strict=False)
+del _ckpt
 
 if train_args.precision == "bf16":
     model = model.to(torch.bfloat16)
@@ -647,14 +760,25 @@ def get_batch():
     return dataset.get_batch(train_args.batch_size, model_args.ctx_len, model_args.vocab_size)
 
 
+def chunked_cross_entropy(logits, labels, chunk=512):
+    """分块计算 cross_entropy，避免大词表下 fp32 中间量撑爆显存。
+    每块只需 chunk * vocab * 4 bytes 临时显存，而非全序列一次性分配。"""
+    flat_logits = logits.view(-1, logits.size(-1))
+    flat_labels = labels.view(-1)
+    n = flat_logits.size(0)
+    total_loss = flat_logits.new_zeros(())
+    for i in range(0, n, chunk):
+        cl = nn.functional.cross_entropy(flat_logits[i:i+chunk], flat_labels[i:i+chunk])
+        total_loss = total_loss + cl * (flat_labels[i:i+chunk].size(0) / n)
+    return total_loss
+
+
 model.train()
 pbar = tqdm(range(train_args.num_steps), desc="Training", ncols=100)
 for step in pbar:
     input_ids, labels = get_batch()
     logits = model(input_ids)
-    loss = nn.functional.cross_entropy(
-        logits.view(-1, logits.size(-1)), labels.view(-1)
-    )
+    loss = chunked_cross_entropy(logits, labels)
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
@@ -697,23 +821,28 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     currentTabIndex.value = 3;
 
     try {
-      final scriptPath = '${repoPath.value}${Platform.pathSeparator}_flutter_train.py';
+      final scriptPath =
+          '${repoPath.value}${Platform.pathSeparator}_flutter_train.py';
       await File(scriptPath).writeAsString(_buildTrainingScript());
       trainingLog.value += '✓ 训练脚本已生成: $scriptPath\n';
       trainingLog.value += '${'=' * 50}\n\n';
 
       _trainingProcess = await Process.start(
         'python',
-        ['-u', '_flutter_train.py'],
+        // -X utf8 强制 Python 以 UTF-8 输出，避免 Windows 系统编码（GBK）混入
+        ['-u', '-X', 'utf8', '_flutter_train.py'],
         workingDirectory: repoPath.value,
         runInShell: true,
       );
 
+      // allowMalformed:true 防止偶发的非 UTF-8 字节（如 tqdm 进度条特殊字符）
+      // 导致 FormatException 崩溃、stream listener 中断
+      const _dec = Utf8Codec(allowMalformed: true);
       _trainingProcess!.stdout
-          .transform(utf8.decoder)
+          .transform(_dec.decoder)
           .listen((data) => trainingLog.value += data);
       _trainingProcess!.stderr
-          .transform(utf8.decoder)
+          .transform(_dec.decoder)
           .listen((data) => trainingLog.value += data);
 
       _trainingProcess!.exitCode.then((code) {
@@ -744,7 +873,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   }
 
   Future<void> refreshOutputFiles() async {
-    final resolvedPath = outputDir.value.startsWith('./') || outputDir.value == '.'
+    final resolvedPath =
+        outputDir.value.startsWith('./') || outputDir.value == '.'
         ? '${repoPath.value}${Platform.pathSeparator}${outputDir.value}'
         : outputDir.value;
     final dir = Directory(resolvedPath);
@@ -770,7 +900,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       // ── 1. 检测 pip ───────────────────────────────────────────────
       installLog.value += '▶ 检测 Python / pip 环境...\n';
       final pipResult = await Process.run(
-        'pip', ['--version'],
+        'pip',
+        ['--version'],
         runInShell: true,
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
@@ -784,7 +915,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
       // ── 2. 显示 pip 源（方便排查网络问题）──────────────────────────
       final indexResult = await Process.run(
-        'pip', ['config', 'get', 'global.index-url'],
+        'pip',
+        ['config', 'get', 'global.index-url'],
         runInShell: true,
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
@@ -795,8 +927,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
       // ── 3. 确定 torch GPU CUDA wheel 源 ──────────────────────────
       final torchWheelTag = _getCudaWheelTag();
-      final torchIndexUrl =
-          'https://download.pytorch.org/whl/$torchWheelTag';
+      final torchIndexUrl = 'https://download.pytorch.org/whl/$torchWheelTag';
       installLog.value +=
           '▶ 将安装 GPU (CUDA) 版本 torch\n'
           '  CUDA wheel tag : $torchWheelTag\n'
@@ -814,7 +945,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           // 异步流监听器与 exitCode 之间的竞态导致 stderr 输出丢失。
           installLog.value += '  先卸载已安装的 torch（避免 CPU/GPU 版本冲突）...\n';
           final uninstall = await Process.run(
-            'pip', ['uninstall', 'torch', '-y'],
+            'pip',
+            ['uninstall', 'torch', '-y'],
             runInShell: true,
             stdoutEncoding: utf8,
             stderrEncoding: utf8,
@@ -827,16 +959,18 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             installLog.value += '  $uninstallLines\n';
           }
 
-          installLog.value +=
-              '  正在从 PyTorch GPU 源下载，文件约 1–2 GB，请耐心等待...\n';
+          installLog.value += '  正在从 PyTorch GPU 源下载，文件约 1–2 GB，请耐心等待...\n';
 
           final torchResult = await Process.run(
             'pip',
             [
-              'install', pkg,
-              '--index-url', torchIndexUrl,
+              'install',
+              pkg,
+              '--index-url',
+              torchIndexUrl,
               '--no-warn-script-location',
-              '--timeout', '300',
+              '--timeout',
+              '300',
             ],
             runInShell: true,
             stdoutEncoding: utf8,
@@ -860,11 +994,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         // ── 其余包：保持原有流式安装方式 ─────────────────────────────────
         final pipArgs = ['install', pkg, '--no-warn-script-location'];
 
-        final process = await Process.start(
-          'pip',
-          pipArgs,
-          runInShell: true,
-        );
+        final process = await Process.start('pip', pipArgs, runInShell: true);
 
         // 同时等待 stdout/stderr 流耗尽，避免输出截断
         final stdoutBuf = StringBuffer();
@@ -926,8 +1056,11 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       // ── 1. ninja ─────────────────────────────────────────────────
       buildToolsLog.value += '▶ 安装 ninja 构建工具...\n';
       final ninjaResult = await Process.run(
-        'pip', ['install', 'ninja', '--no-warn-script-location'],
-        runInShell: true, stdoutEncoding: utf8, stderrEncoding: utf8,
+        'pip',
+        ['install', 'ninja', '--no-warn-script-location'],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
       );
       final ninjaOut = (ninjaResult.stdout as String).trim();
       final ninjaErr = (ninjaResult.stderr as String).trim();
@@ -939,15 +1072,21 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
       // ── 2. 检测是否已有 cl.exe ────────────────────────────────────
       final clCheck = await Process.run(
-        'where', ['cl'],
-        runInShell: true, stdoutEncoding: utf8, stderrEncoding: utf8,
+        'where',
+        ['cl'],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
       );
       if (clCheck.exitCode == 0) {
         buildToolsLog.value +=
             '✓ 已检测到 MSVC cl.exe，无需重复安装\n'
             '  ${(clCheck.stdout as String).trim()}\n';
-        Get.snackbar('编译工具', '已检测到 MSVC，无需重复安装',
-            snackPosition: SnackPosition.TOP);
+        Get.snackbar(
+          '编译工具',
+          '已检测到 MSVC，无需重复安装',
+          snackPosition: SnackPosition.TOP,
+        );
         return;
       }
 
@@ -961,7 +1100,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         'winget',
         [
           'install',
-          '--id', 'Microsoft.VisualStudio.2022.BuildTools',
+          '--id',
+          'Microsoft.VisualStudio.2022.BuildTools',
           '--override',
           '--passive --wait '
               '--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 '
@@ -980,18 +1120,24 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         buildToolsLog.value +=
             '\n✓ MSVC 编译工具安装完成！\n'
             '  请重启应用后重新运行训练\n';
-        Get.snackbar('安装完成', 'MSVC 已安装，请重启应用后再训练',
-            snackPosition: SnackPosition.TOP,
-            duration: const Duration(seconds: 6));
+        Get.snackbar(
+          '安装完成',
+          'MSVC 已安装，请重启应用后再训练',
+          snackPosition: SnackPosition.TOP,
+          duration: const Duration(seconds: 6),
+        );
       } else {
         buildToolsLog.value +=
             '\n✗ winget 安装失败 (exit: ${msvcResult.exitCode})\n'
             '  请手动下载 VS Build Tools（免费，仅选 C++ 编译器）：\n'
             '  https://aka.ms/vs/17/release/vs_buildtools.exe\n'
             '  安装时只勾选 "MSVC v143" 和 "Windows SDK" 两项即可\n';
-        Get.snackbar('安装失败', '请手动安装 VS Build Tools',
-            snackPosition: SnackPosition.TOP,
-            duration: const Duration(seconds: 8));
+        Get.snackbar(
+          '安装失败',
+          '请手动安装 VS Build Tools',
+          snackPosition: SnackPosition.TOP,
+          duration: const Duration(seconds: 8),
+        );
       }
     } catch (e) {
       buildToolsLog.value += '异常: $e\n';
@@ -1010,7 +1156,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       final missing = <String>[];
       for (final pkg in _envCheckPackages) {
         final result = await Process.run(
-          'pip', ['show', pkg],
+          'pip',
+          ['show', pkg],
           runInShell: true,
           stdoutEncoding: utf8,
           stderrEncoding: utf8,
