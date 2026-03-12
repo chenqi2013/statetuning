@@ -190,52 +190,25 @@ class HomePage extends GetView<HomeController> {
           ),
           const SizedBox(height: 20),
           _sectionCard(
-            title: '训练精度',
-            child: Obx(() => Row(
-                  children: [
-                    _precisionButton('BF16', TrainingPrecision.bf16),
-                    const SizedBox(width: 12),
-                    _precisionButton('FP16', TrainingPrecision.fp16),
-                    const SizedBox(width: 12),
-                    _precisionButton('FP32', TrainingPrecision.fp32),
-                  ],
-                )),
-          ),
-          const SizedBox(height: 20),
-          _sectionCard(
             title: 'ModelArgs（高级）',
-            child: Column(
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _labeledField('词表大小 (vocab_size)',
-                          controller.vocabSizeController,
-                          hint: '65536', keyboardType: TextInputType.number),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _labeledField('上下文长度 (ctx_len)',
-                          controller.ctxLenController,
-                          hint: '512', keyboardType: TextInputType.number),
-                    ),
-                  ],
+                Expanded(
+                  child: _labeledField('词表大小 (vocab_size)',
+                      controller.vocabSizeController,
+                      hint: '65536', keyboardType: TextInputType.number),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _labeledField('嵌入维度 (n_embd)',
-                          controller.nEmbdController,
-                          hint: '1024', keyboardType: TextInputType.number),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _labeledField('层数 (n_layer)',
-                          controller.nLayerController,
-                          hint: '24', keyboardType: TextInputType.number),
-                    ),
-                  ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _labeledField('嵌入维度 (n_embd)',
+                      controller.nEmbdController,
+                      hint: '1024', keyboardType: TextInputType.number),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _labeledField('层数 (n_layer)',
+                      controller.nLayerController,
+                      hint: '24', keyboardType: TextInputType.number),
                 ),
               ],
             ),
@@ -444,6 +417,37 @@ class HomePage extends GetView<HomeController> {
                     Expanded(
                       child: _labeledField('学习率', controller.learningRateController,
                           hint: '1e-5'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _labeledField('上下文长度 (ctx_len)',
+                          controller.ctxLenController,
+                          hint: '512', keyboardType: TextInputType.number),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('训练精度',
+                              style: TextStyle(
+                                  color: Color(0xFF9CA3AF), fontSize: 13)),
+                          const SizedBox(height: 8),
+                          Obx(() => Row(
+                                children: [
+                                  _precisionButton('BF16', TrainingPrecision.bf16),
+                                  const SizedBox(width: 10),
+                                  _precisionButton('FP16', TrainingPrecision.fp16),
+                                  const SizedBox(width: 10),
+                                  _precisionButton('FP32', TrainingPrecision.fp32),
+                                ],
+                              )),
+                        ],
+                      ),
                     ),
                   ],
                 ),

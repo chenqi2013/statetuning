@@ -899,7 +899,17 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   }
 
   Future<void> stopTraining() async {
-    _trainingProcess?.kill();
+    if (_trainingProcess != null) {
+      final pid = _trainingProcess!.pid;
+      // Windows 上 runInShell:true 会在 cmd.exe 里启动 Python，
+      // 直接 kill() 只杀掉壳进程，Python 子进程仍在运行。
+      // taskkill /F /T 强制终止整个进程树（含所有子进程）。
+      await Process.run(
+        'taskkill', ['/F', '/T', '/PID', '$pid'],
+        runInShell: true,
+      );
+      _trainingProcess = null;
+    }
     isTraining.value = false;
     status.value = '已停止';
     trainingLog.value += '\n⏹ 训练已手动停止\n';
