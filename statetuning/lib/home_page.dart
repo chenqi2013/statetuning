@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -22,7 +23,7 @@ class HomePage extends GetView<HomeController> {
                 case 2:
                   return _buildTrainTab();
                 case 3:
-                  return _buildMonitorTab();
+                  return _buildMonitorTab(context);
                 case 4:
                   return _buildExportTab();
                 case 5:
@@ -555,7 +556,7 @@ class HomePage extends GetView<HomeController> {
 
   // ─── Tab 3: 监控 ─────────────────────────────────────────────────────────────
 
-  Widget _buildMonitorTab() {
+  Widget _buildMonitorTab(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -565,6 +566,19 @@ class HomePage extends GetView<HomeController> {
             children: [
               Obx(() => _statusBadge(controller.isTraining.value)),
               const Spacer(),
+              // 「查看Loss曲线」按钮：训练完成且有数据时显示
+              Obx(() {
+                if (controller.lossHistory.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showLossChart(context),
+                    icon: const Icon(Icons.show_chart, size: 18),
+                    label: const Text('查看Loss曲线'),
+                    style: _btnStyle(const Color(0xFF7C3AED), compact: true),
+                  ),
+                );
+              }),
               Obx(() {
                 if (!controller.isTraining.value) return const SizedBox.shrink();
                 return ElevatedButton.icon(
@@ -613,6 +627,139 @@ class HomePage extends GetView<HomeController> {
             }),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showLossChart(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: const Color(0xFF1A1D21),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: const EdgeInsets.all(24),
+        child: SizedBox(
+          width: 700,
+          height: 460,
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.show_chart, color: Color(0xFF7C3AED), size: 22),
+                    const SizedBox(width: 10),
+                    const Text('Training Loss 曲线',
+                        style: TextStyle(color: Color(0xFFE2E8F0),
+                            fontSize: 16, fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    Obx(() => Text(
+                          '共 ${controller.lossHistory.length} 步',
+                          style: const TextStyle(
+                              color: Color(0xFF6B7280), fontSize: 13),
+                        )),
+                    const SizedBox(width: 16),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Color(0xFF6B7280)),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Expanded(child: Obx(() => _buildLossChart(controller.lossHistory))),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLossChart(List<double> losses) {
+    if (losses.isEmpty) {
+      return const Center(
+          child: Text('暂无 Loss 数据', style: TextStyle(color: Color(0xFF6B7280))));
+    }
+
+    // 每隔 N 点采样，避免数据量太大时渲染卡顿
+    const maxPoints = 400;
+    final step = losses.length > maxPoints ? (losses.length / maxPoints).ceil() : 1;
+    final spots = <FlSpot>[];
+    for (var i = 0; i < losses.length; i += step) {
+      spots.add(FlSpot(i.toDouble(), losses[i]));
+    }
+
+    final minY = losses.reduce((a, b) => a < b ? a : b);
+    final maxY = losses.reduce((a, b) => a > b ? a : b);
+    final padY = (maxY - minY) * 0.1 + 0.05;
+
+    return LineChart(
+      LineChartData(
+        minY: minY - padY,
+        maxY: maxY + padY,
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            curveSmoothness: 0.3,
+            color: const Color(0xFF7C3AED),
+            barWidth: 2,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
+            ),
+          ),
+        ],
+        gridData: FlGridData(
+          show: true,
+          getDrawingHorizontalLine: (_) =>
+              const FlLine(color: Color(0xFF2A2D35), strokeWidth: 1),
+          getDrawingVerticalLine: (_) =>
+              const FlLine(color: Color(0xFF2A2D35), strokeWidth: 1),
+        ),
+        borderData: FlBorderData(
+          show: true,
+          border: Border.all(color: const Color(0xFF3A3F47)),
+        ),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(
+            axisNameWidget: const Text('Loss',
+                style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 48,
+              getTitlesWidget: (v, _) => Text(v.toStringAsFixed(2),
+                  style: const TextStyle(
+                      color: Color(0xFF6B7280), fontSize: 11)),
+            ),
+          ),
+          bottomTitles: AxisTitles(
+            axisNameWidget: const Text('Step',
+                style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 28,
+              getTitlesWidget: (v, _) => Text(v.toInt().toString(),
+                  style: const TextStyle(
+                      color: Color(0xFF6B7280), fontSize: 11)),
+            ),
+          ),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        ),
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (_) => const Color(0xFF252830),
+            getTooltipItems: (spots) => spots
+                .map((s) => LineTooltipItem(
+                      'Step ${s.x.toInt()}\nLoss: ${s.y.toStringAsFixed(4)}',
+                      const TextStyle(color: Color(0xFFE2E8F0), fontSize: 12),
+                    ))
+                .toList(),
+          ),
+        ),
       ),
     );
   }
@@ -844,107 +991,119 @@ class HomePage extends GetView<HomeController> {
   Widget _buildEnvCard() {
     return _sectionCard(
         title: '环境配置',
-        child: Column(
+        child: Obx(() {
+          final ready = controller.envReady.value;
+          final checking = controller.isChecking.value;
+          final installing = controller.isInstalling.value;
+          return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '一键安装 RWKV State Tuning 所需依赖\n'
-              '(来源: github.com/Joluck/statetuning)',
-              style: TextStyle(
-                  color: Color(0xFFB0B5BC), fontSize: 14, height: 1.5),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1D21),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFF3A3F47)),
-              ),
-              child: const SelectableText(
-                'torch>=2.0.0  [GPU/CUDA 版本，自动匹配 CUDA 版本号]\n'
-                'transformers>=4.30.0\n'
-                'tqdm>=4.65.0\n'
-                'huggingface-hub\n'
-                'ninja          [CUDA 扩展构建工具]',
-                style: TextStyle(
-                    color: Color(0xFF86EFAC),
-                    fontSize: 12,
-                    fontFamily: 'monospace'),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Obx(() => Row(
+            // ── 环境就绪状态栏 ──────────────────────────────────────
+            if (checking)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Row(children: [
+                  SizedBox(width: 20, height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 12),
+                  Text('正在检测环境...', style: TextStyle(color: Color(0xFFB0B5BC))),
+                ]),
+              )
+            else if (ready)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(
                   children: [
+                    Icon(Icons.check_circle, color: Colors.green[400], size: 22),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: controller.isInstalling.value
-                            ? null
-                            : controller.installEnvironment,
-                        icon: controller.isInstalling.value
-                            ? const SizedBox(
-                                width: 20, height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Icon(Icons.install_desktop),
-                        label: Text(controller.isInstalling.value
-                            ? '安装中...'
-                            : '一键安装'),
-                        style: _btnStyle(const Color(0xFF3B82F6)),
-                      ),
+                      child: Text('所有环境已就绪',
+                          style: TextStyle(color: Colors.green[400],
+                              fontSize: 15, fontWeight: FontWeight.w600)),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: (controller.isInstalling.value ||
-                                controller.isChecking.value)
-                            ? null
-                            : controller.checkEnvironment,
-                        icon: controller.isChecking.value
-                            ? const SizedBox(
-                                width: 20, height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Icon(Icons.verified_user),
-                        label: Text(controller.isChecking.value
-                            ? '检测中...'
-                            : '检测环境'),
-                        style: _btnStyle(controller.envReady.value
-                            ? const Color(0xFF22C55E)
-                            : const Color(0xFF6B7280)),
-                      ),
+                    TextButton.icon(
+                      onPressed: controller.checkEnvironment,
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('重新检测'),
+                      style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF6B7280)),
                     ),
                   ],
-                )),
-            Obx(() => controller.envReady.value
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Row(
-                      children: [
-                        Icon(Icons.check_circle,
-                            color: Colors.green[400], size: 20),
-                        const SizedBox(width: 8),
-                        Text('所有环境已经准备好',
-                            style: TextStyle(
-                                color: Colors.green[400],
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500)),
-                      ],
+                ),
+              )
+            else ...[
+              // ── 环境有问题：显示完整安装区 ───────────────────────
+              const Text(
+                '以下依赖缺失或需更新，点击「一键安装」自动安装：\n'
+                '(来源: github.com/Joluck/statetuning)',
+                style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 14, height: 1.5),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1D21),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF3A3F47)),
+                ),
+                child: const SelectableText(
+                  'torch>=2.0.0  [GPU/CUDA 版本，自动匹配 CUDA 版本号]\n'
+                  'transformers>=4.30.0\n'
+                  'tqdm>=4.65.0\n'
+                  'huggingface-hub\n'
+                  'ninja          [CUDA 扩展构建工具]',
+                  style: TextStyle(color: Color(0xFF86EFAC),
+                      fontSize: 12, fontFamily: 'monospace'),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: installing ? null : controller.installEnvironment,
+                      icon: installing
+                          ? const SizedBox(width: 20, height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.install_desktop),
+                      label: Text(installing ? '安装中...' : '一键安装'),
+                      style: _btnStyle(const Color(0xFF3B82F6)),
                     ),
-                  )
-                : const SizedBox.shrink()),
-            const SizedBox(height: 20),
-            _logLabel('安装日志'),
-            const SizedBox(height: 8),
-            Obx(() => _logBox(controller.installLog.value,
-                placeholder: '点击「一键安装」开始安装...')),
-            const SizedBox(height: 16),
-            _logLabel('检测结果'),
-            const SizedBox(height: 8),
-            Obx(() => _logBox(controller.checkLog.value,
-                placeholder: '点击「检测环境」按钮检查依赖是否已安装')),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: (installing || checking)
+                          ? null : controller.checkEnvironment,
+                      icon: checking
+                          ? const SizedBox(width: 20, height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.verified_user),
+                      label: Text(checking ? '检测中...' : '检测环境'),
+                      style: _btnStyle(const Color(0xFF6B7280)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            // ── 检测结果日志（有问题时才显示）────────────────────────
+            if (!ready) ...[
+              const SizedBox(height: 16),
+              _logLabel('检测结果'),
+              const SizedBox(height: 8),
+              _logBox(controller.checkLog.value,
+                  placeholder: '正在检测环境...'),
+            ],
+            // ── 安装日志（有内容时才显示）────────────────────────────
+            if (controller.installLog.value.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _logLabel('安装日志'),
+              const SizedBox(height: 8),
+              _logBox(controller.installLog.value,
+                  placeholder: '点击「一键安装」开始安装...'),
+            ],
             const SizedBox(height: 24),
             const Divider(color: Color(0xFF3A3F47)),
             const SizedBox(height: 16),
@@ -991,7 +1150,8 @@ class HomePage extends GetView<HomeController> {
             Obx(() => _logBox(controller.buildToolsLog.value,
                 placeholder: '点击「安装编译工具」开始安装...')),
           ],
-        ),
+        );
+        }), // end Obx
     );
   }
 

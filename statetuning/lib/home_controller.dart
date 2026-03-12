@@ -61,6 +61,9 @@ class HomeController extends GetxController {
   // --- Training State ---
   final isTraining = false.obs;
   final trainingLog = ''.obs;
+  // step → loss，用于去重（每步 tqdm 会打两次）
+  final _lossMap = <int, double>{};
+  final lossHistory = <double>[].obs;
   Process? _trainingProcess;
 
   // --- Repo State ---
@@ -183,6 +186,12 @@ class HomeController extends GetxController {
 
     _detectGpu();
     detectCudaHome();
+    // 启动时静默检测一次环境
+    checkEnvironment();
+    // 切换到设置 tab（index 4）时自动重新检测
+    ever(currentTabIndex, (idx) {
+      if (idx == 4 && !isChecking.value) checkEnvironment();
+    });
   }
 
   @override
@@ -818,6 +827,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     isTraining.value = true;
     status.value = '训练中';
     trainingLog.value = '';
+    _lossMap.clear();
+    lossHistory.value = [];
     currentTabIndex.value = 3;
 
     try {
@@ -838,12 +849,14 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       // allowMalformed:true 防止偶发的非 UTF-8 字节（如 tqdm 进度条特殊字符）
       // 导致 FormatException 崩溃、stream listener 中断
       const _dec = Utf8Codec(allowMalformed: true);
-      _trainingProcess!.stdout
-          .transform(_dec.decoder)
-          .listen((data) => trainingLog.value += data);
-      _trainingProcess!.stderr
-          .transform(_dec.decoder)
-          .listen((data) => trainingLog.value += data);
+      _trainingProcess!.stdout.transform(_dec.decoder).listen((data) {
+        trainingLog.value += data;
+        _parseLoss(data);
+      });
+      _trainingProcess!.stderr.transform(_dec.decoder).listen((data) {
+        trainingLog.value += data;
+        _parseLoss(data);
+      });
 
       _trainingProcess!.exitCode.then((code) {
         isTraining.value = false;
@@ -862,6 +875,26 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       isTraining.value = false;
       status.value = '空闲';
       Get.snackbar('启动失败', '$e');
+    }
+  }
+
+  /// 从 tqdm 日志片段中提取 (step, loss) 并更新 lossHistory。
+  /// tqdm 格式: | 12/1000 [..., loss=2.3456]
+  void _parseLoss(String data) {
+    final re = RegExp(r'\|\s*(\d+)/\d+.*?loss=([\d.]+)');
+    bool changed = false;
+    for (final m in re.allMatches(data)) {
+      final step = int.tryParse(m.group(1)!) ?? 0;
+      final loss = double.tryParse(m.group(2)!) ?? 0;
+      if (step > 0 && loss > 0) {
+        _lossMap[step] = loss;
+        changed = true;
+      }
+    }
+    if (changed) {
+      final sorted = _lossMap.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      lossHistory.value = sorted.map((e) => e.value).toList();
     }
   }
 
