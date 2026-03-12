@@ -180,12 +180,30 @@ class HomePage extends GetView<HomeController> {
           const SizedBox(height: 20),
           _sectionCard(
             title: '模型文件路径',
-            child: _labeledField(
-              '预训练模型 (.pth)',
-              controller.modelPathController,
-              hint: '点击右侧按钮选择文件',
-              onBrowse: controller.pickModelFile,
-              browseIcon: Icons.file_open,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _labeledField(
+                  '预训练模型 (.pth)',
+                  controller.modelPathController,
+                  hint: '选择或粘贴路径，自动读取模型尺寸',
+                  onBrowse: controller.pickModelFile,
+                  browseIcon: Icons.file_open,
+                ),
+                Obx(() {
+                  if (!controller.isDetectingModel.value) return const SizedBox.shrink();
+                  return const Padding(
+                    padding: EdgeInsets.only(top: 10),
+                    child: Row(children: [
+                      SizedBox(width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                      SizedBox(width: 10),
+                      Text('正在读取模型尺寸...',
+                          style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
+                    ]),
+                  );
+                }),
+              ],
             ),
           ),
           const SizedBox(height: 20),

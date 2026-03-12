@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -65,6 +66,9 @@ class HomeController extends GetxController {
   final _lossMap = <int, double>{};
   final lossHistory = <double>[].obs;
   Process? _trainingProcess;
+  // 日志缓冲区 + 定时刷新，避免高频 stdout 触发过多 UI 重建
+  final _logBuf = StringBuffer();
+  Timer? _logFlushTimer;
 
   // --- Repo State ---
   final isCloningRepo = false.obs;
@@ -90,6 +94,8 @@ class HomeController extends GetxController {
     'ninja',
   ];
   final isInstalling = false.obs;
+  final isDetectingModel = false.obs;
+  Timer? _modelDetectTimer;
   final installLog = ''.obs;
   final isChecking = false.obs;
   final envReady = false.obs;
@@ -153,9 +159,17 @@ class HomeController extends GetxController {
       final v = int.tryParse(ctxLenController.text);
       if (v != null && v > 0) ctxLen.value = v;
     });
-    modelPathController.addListener(
-      () => modelPath.value = modelPathController.text,
-    );
+    modelPathController.addListener(() {
+      final path = modelPathController.text;
+      modelPath.value = path;
+      // 防抖：输入停止 800ms 后若路径是 .pth 文件则自动检测
+      _modelDetectTimer?.cancel();
+      if (path.toLowerCase().endsWith('.pth')) {
+        _modelDetectTimer = Timer(const Duration(milliseconds: 800), () {
+          _autoDetectModelShape(path);
+        });
+      }
+    });
     dataPathController.addListener(
       () => dataPath.value = dataPathController.text,
     );
@@ -214,6 +228,8 @@ class HomeController extends GetxController {
       c.dispose();
     }
     _trainingProcess?.kill();
+    _logFlushTimer?.cancel();
+    _modelDetectTimer?.cancel();
     super.onClose();
   }
 
@@ -391,31 +407,59 @@ class HomeController extends GetxController {
     if (result != null && result.files.single.path != null) {
       final path = result.files.single.path!;
       modelPath.value = path;
+      _modelDetectTimer?.cancel(); // 取消防抖，避免与下方直接调用重复
       modelPathController.text = path;
+      _modelDetectTimer?.cancel(); // 设置 text 会再次触发 listener，再取消一次
       await _autoDetectModelShape(path);
     }
   }
 
   /// 读取 .pth checkpoint，自动检测并更新模型尺寸参数。
   Future<void> _autoDetectModelShape(String pthPath) async {
+    if (isDetectingModel.value) return;
+    if (!await File(pthPath).exists()) return;
+    isDetectingModel.value = true;
+    // 写入临时 Python 脚本文件，避免 Windows shell 对 -c 多行代码的破坏
+    final tmpScript = File(
+      '${Directory.systemTemp.path}\\rwkv_detect_shape.py',
+    );
+    await tmpScript.writeAsString(
+      'import torch, re, sys\n'
+      'path = sys.argv[1]\n'
+      'try:\n'
+      '    ckpt = torch.load(path, map_location="cpu", weights_only=True)\n'
+      'except Exception:\n'
+      '    ckpt = torch.load(path, map_location="cpu", weights_only=False)\n'
+      'n_embd = ckpt["head.weight"].shape[1] if "head.weight" in ckpt else -1\n'
+      'vocab  = ckpt["head.weight"].shape[0] if "head.weight" in ckpt else -1\n'
+      'layers = max(\n'
+      '    (int(re.match(r"blocks\\.(\\d+)\\.", k).group(1)) for k in ckpt if re.match(r"blocks\\.(\\d+)\\.", k)),\n'
+      '    default=-1\n'
+      ') + 1\n'
+      'print(f"{n_embd},{vocab},{layers}")\n',
+      encoding: utf8,
+    );
     try {
       final result = await Process.run(
         'python',
-        [
-          '-X', 'utf8', '-c',
-          'import torch, re, sys\n'
-          'ckpt = torch.load(sys.argv[1], map_location="cpu", weights_only=True)\n'
-          'n_embd = ckpt["head.weight"].shape[1] if "head.weight" in ckpt else -1\n'
-          'vocab  = ckpt["head.weight"].shape[0] if "head.weight" in ckpt else -1\n'
-          'layers = max((int(re.match(r"blocks\\.(\\d+)\\.", k).group(1)) for k in ckpt if re.match(r"blocks\\.(\\d+)\\.", k)), default=-1) + 1\n'
-          'print(f"{n_embd},{vocab},{layers}")',
-          pthPath,
-        ],
+        ['-X', 'utf8', tmpScript.path, pthPath],
         runInShell: true,
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
       );
-      if (result.exitCode != 0) return;
+      if (result.exitCode != 0) {
+        Get.snackbar(
+          '模型尺寸检测失败',
+          (result.stderr as String).trim().isNotEmpty
+              ? (result.stderr as String).trim()
+              : '无法读取模型文件',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.red.shade800,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 6),
+        );
+        return;
+      }
       final parts = (result.stdout as String).trim().split(',');
       if (parts.length < 3) return;
       final detectedEmbd   = int.tryParse(parts[0]) ?? -1;
@@ -433,8 +477,7 @@ class HomeController extends GetxController {
         nLayer.value = detectedLayers;
         nLayerController.text = '$detectedLayers';
       }
-      if (detectedEmbd > 0) {
-        // 自动匹配预设名称（仅更新标签，不强制）
+      if (detectedEmbd > 0 || detectedVocab > 0 || detectedLayers > 0) {
         selectedPreset.value = '自定义';
         Get.snackbar(
           '模型尺寸已自动检测',
@@ -443,7 +486,18 @@ class HomeController extends GetxController {
           duration: const Duration(seconds: 4),
         );
       }
-    } catch (_) {}
+    } catch (e) {
+      Get.snackbar(
+        '模型尺寸检测出错',
+        e.toString(),
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red.shade800,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 6),
+      );
+    } finally {
+      isDetectingModel.value = false;
+    }
   }
 
   Future<void> pickDataFile() async {
@@ -827,6 +881,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     isTraining.value = true;
     status.value = '训练中';
     trainingLog.value = '';
+    _logBuf.clear();
     _lossMap.clear();
     lossHistory.value = [];
     currentTabIndex.value = 3;
@@ -835,43 +890,58 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       final scriptPath =
           '${repoPath.value}${Platform.pathSeparator}_flutter_train.py';
       await File(scriptPath).writeAsString(_buildTrainingScript());
-      trainingLog.value += '✓ 训练脚本已生成: $scriptPath\n';
-      trainingLog.value += '${'=' * 50}\n\n';
+      _logBuf
+        ..write('✓ 训练脚本已生成: $scriptPath\n')
+        ..write('${'=' * 50}\n\n');
+      trainingLog.value = _logBuf.toString();
 
       _trainingProcess = await Process.start(
         'python',
-        // -X utf8 强制 Python 以 UTF-8 输出，避免 Windows 系统编码（GBK）混入
         ['-u', '-X', 'utf8', '_flutter_train.py'],
         workingDirectory: repoPath.value,
         runInShell: true,
       );
 
-      // allowMalformed:true 防止偶发的非 UTF-8 字节（如 tqdm 进度条特殊字符）
-      // 导致 FormatException 崩溃、stream listener 中断
-      const _dec = Utf8Codec(allowMalformed: true);
-      _trainingProcess!.stdout.transform(_dec.decoder).listen((data) {
-        trainingLog.value += data;
-        _parseLoss(data);
-      });
-      _trainingProcess!.stderr.transform(_dec.decoder).listen((data) {
-        trainingLog.value += data;
-        _parseLoss(data);
+      // 定时器每 150ms 将缓冲区一次性刷新到响应式变量，
+      // 把每秒数十次的 UI 重建压缩到每秒约 7 次，消除训练时的界面卡顿。
+      _logFlushTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
+        final s = _logBuf.toString();
+        if (s != trainingLog.value) trainingLog.value = s;
       });
 
+      // allowMalformed:true 防止 tqdm 特殊字节导致 stream 中断
+      const dec = Utf8Codec(allowMalformed: true);
+      void onData(String data) {
+        _logBuf.write(data);
+        _parseLoss(data);
+      }
+      _trainingProcess!.stdout.transform(dec.decoder).listen(onData);
+      _trainingProcess!.stderr.transform(dec.decoder).listen(onData);
+
       _trainingProcess!.exitCode.then((code) {
+        _logFlushTimer?.cancel();
+        _logFlushTimer = null;
+        // 最终刷新一次，确保末尾日志完整显示
+        final suffix = code == 0
+            ? '\n${'=' * 50}\n✓ 训练成功完成！\n'
+            : '\n✗ 训练异常退出 (exit: $code)\n';
+        _logBuf.write(suffix);
+        trainingLog.value = _logBuf.toString();
+
         isTraining.value = false;
         status.value = code == 0 ? '训练完成' : '训练异常';
         if (code == 0) {
-          trainingLog.value += '\n${'=' * 50}\n✓ 训练成功完成！\n';
           Get.snackbar('训练完成', '模型已保存到 ${outputDir.value}');
           refreshOutputFiles();
         } else {
-          trainingLog.value += '\n✗ 训练异常退出 (exit: $code)\n';
           Get.snackbar('训练失败', '请查看监控日志');
         }
       });
     } catch (e) {
-      trainingLog.value += '启动失败: $e\n';
+      _logFlushTimer?.cancel();
+      _logFlushTimer = null;
+      _logBuf.write('启动失败: $e\n');
+      trainingLog.value = _logBuf.toString();
       isTraining.value = false;
       status.value = '空闲';
       Get.snackbar('启动失败', '$e');
@@ -899,20 +969,20 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   }
 
   Future<void> stopTraining() async {
+    _logFlushTimer?.cancel();
+    _logFlushTimer = null;
     if (_trainingProcess != null) {
       final pid = _trainingProcess!.pid;
-      // Windows 上 runInShell:true 会在 cmd.exe 里启动 Python，
-      // 直接 kill() 只杀掉壳进程，Python 子进程仍在运行。
-      // taskkill /F /T 强制终止整个进程树（含所有子进程）。
       await Process.run(
         'taskkill', ['/F', '/T', '/PID', '$pid'],
         runInShell: true,
       );
       _trainingProcess = null;
     }
+    _logBuf.write('\n⏹ 训练已手动停止\n');
+    trainingLog.value = _logBuf.toString();
     isTraining.value = false;
     status.value = '已停止';
-    trainingLog.value += '\n⏹ 训练已手动停止\n';
   }
 
   Future<void> refreshOutputFiles() async {
