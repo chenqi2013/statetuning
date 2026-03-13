@@ -1016,6 +1016,25 @@ class HomePage extends GetView<HomeController> {
                 ],
               ),
             );
+              }),
+          const SizedBox(height: 16),
+          Obx(() {
+            final uv = controller.uvInstalled.value;
+            return _buildStatusRow(
+              'UV',
+              uv,
+              description: 'Python 虚拟环境工具，依赖安装到项目 python_venv 目录',
+              onRetry: controller.detectUv,
+              whenMissing: ElevatedButton.icon(
+                onPressed: controller.isUvInstalling.value ? null : controller.installUv,
+                icon: controller.isUvInstalling.value
+                    ? const SizedBox(width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.download, size: 18),
+                label: Text(controller.isUvInstalling.value ? '安装中...' : '一键安装 UV'),
+                style: _btnStyle(const Color(0xFF7C3AED), compact: true),
+              ),
+            );
           }),
           const SizedBox(height: 16),
           Obx(() {
@@ -1240,9 +1259,9 @@ class HomePage extends GetView<HomeController> {
                 ),
               )
             else ...[
-              // ── 未安装 Python 时优先显示 ────────────────────────────
+              // ── 未安装 UV 时优先显示 ────────────────────────────────
               Obx(() {
-                if (!controller.pythonInstalled.value) {
+                if (!controller.uvInstalled.value) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1251,36 +1270,41 @@ class HomePage extends GetView<HomeController> {
                           Icon(Icons.warning_amber_rounded,
                               color: Color(0xFFFBBF24), size: 20),
                           SizedBox(width: 8),
-                          Text('未检测到 Python，需先安装',
+                          Text('未检测到 UV，依赖将安装到项目目录',
                               style: TextStyle(color: Color(0xFFFBBF24),
                                   fontSize: 14, fontWeight: FontWeight.w500)),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'UV 会创建 python_venv 虚拟环境，依赖装到项目目录，不占用 C 盘。',
+                        style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 12),
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed: controller.isPythonInstalling.value
+                          onPressed: controller.isUvInstalling.value
                               ? null
-                              : controller.installPython,
-                          icon: controller.isPythonInstalling.value
+                              : controller.installUv,
+                          icon: controller.isUvInstalling.value
                               ? const SizedBox(
                                   width: 20, height: 20,
                                   child: CircularProgressIndicator(
                                       strokeWidth: 2, color: Colors.white),
                                 )
                               : const Icon(Icons.download),
-                          label: Text(controller.isPythonInstalling.value
+                          label: Text(controller.isUvInstalling.value
                               ? '安装中...'
-                              : '一键安装 Python 3.12'),
+                              : '一键安装 UV'),
                           style: _btnStyle(const Color(0xFF7C3AED)),
                         ),
                       ),
-                      if (controller.pythonInstallLog.value.isNotEmpty) ...[
+                      if (controller.uvInstallLog.value.isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        _logLabel('Python 安装日志'),
+                        _logLabel('UV 安装日志'),
                         const SizedBox(height: 8),
-                        Obx(() => _logBox(controller.pythonInstallLog.value)),
+                        Obx(() => _logBox(controller.uvInstallLog.value)),
                       ],
                       const SizedBox(height: 20),
                       const Divider(color: Color(0xFF3A3F47)),
@@ -1291,7 +1315,7 @@ class HomePage extends GetView<HomeController> {
                 return const SizedBox.shrink();
               }),
               const Text(
-                '以下依赖缺失或需更新，点击「一键安装」自动安装：\n'
+                '以下依赖将安装到项目 python_venv 目录（不占 C 盘），点击「一键安装」：\n'
                 '(来源: github.com/Joluck/statetuning)',
                 style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 14, height: 1.5),
               ),
@@ -1304,11 +1328,12 @@ class HomePage extends GetView<HomeController> {
                   border: Border.all(color: const Color(0xFF3A3F47)),
                 ),
                 child: const SelectableText(
-                  'torch>=2.0.0  [GPU/CUDA 版本，自动匹配 CUDA 版本号]\n'
+                  'UV 创建 python_venv → 安装：\n'
+                  'torch>=2.0.0  [GPU/CUDA，自动匹配 CUDA 版本]\n'
                   'transformers>=4.30.0\n'
                   'tqdm>=4.65.0\n'
                   'huggingface-hub\n'
-                  'ninja          [CUDA 扩展构建工具]',
+                  'ninja          [CUDA 扩展构建]',
                   style: TextStyle(color: Color(0xFF86EFAC),
                       fontSize: 12, fontFamily: 'monospace'),
                 ),

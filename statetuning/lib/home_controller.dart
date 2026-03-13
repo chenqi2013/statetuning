@@ -102,6 +102,7 @@ class HomeController extends GetxController {
     'tqdm>=4.65.0',
     'huggingface-hub',
     'ninja',
+    'einops',
   ];
   static const _envCheckPackages = [
     'torch',
@@ -109,6 +110,7 @@ class HomeController extends GetxController {
     'tqdm',
     'huggingface_hub',
     'ninja',
+    'einops',
   ];
   final isInstalling = false.obs;
   final isDetectingModel = false.obs;
@@ -118,7 +120,11 @@ class HomeController extends GetxController {
   final envReady = false.obs;
   final checkLog = ''.obs;
 
-  // --- Python (pip 依赖) ---
+  // --- UV + 项目内虚拟环境 (替代系统 Python/pip，依赖装项目目录) ---
+  final uvInstalled = false.obs;
+  final isUvInstalling = false.obs;
+  final uvInstallLog = ''.obs;
+  // 兼容旧逻辑，pythonInstalled 表示「有可用 Python」（UV venv 或回退系统）
   final pythonInstalled = false.obs;
   final isPythonInstalling = false.obs;
   final pythonInstallLog = ''.obs;
@@ -222,6 +228,7 @@ class HomeController extends GetxController {
 
     detectWinget();
     detectNvidiaDriver();
+    detectUv();
     _detectGpu();
     detectCudaHome();
     detectPython();
@@ -233,6 +240,7 @@ class HomeController extends GetxController {
       if (idx == 4) {
         detectWinget();
         detectNvidiaDriver();
+        detectUv();
         detectPython();
         if (!isChecking.value) checkEnvironment();
         detectCudaHome();
@@ -575,8 +583,9 @@ class HomeController extends GetxController {
       encoding: utf8,
     );
     try {
+      final py = _venvPythonPath ?? 'python';
       final result = await Process.run(
-        'python',
+        py,
         ['-X', 'utf8', tmpScript.path, pthPath],
         runInShell: true,
         stdoutEncoding: utf8,
@@ -903,14 +912,16 @@ def _setup_msvc_env():
         return True  # cl.exe 在 PATH，尽力而为
 
     # 3. 运行 vcvarsall.bat x64 并把它导出的环境变量应用到当前进程
+    # 使用 cp936 解码，避免中文 Windows 下 set 输出导致 UnicodeDecodeError
     print(f"[BUILD] 初始化 MSVC 环境: {vcvars}")
     try:
+        _enc = "cp936" if os.name == "nt" else "utf-8"
         result = _sp2.run(
             f'"{vcvars}" x64 > nul 2>&1 && set',
-            capture_output=True, text=True, shell=True, timeout=60,
+            capture_output=True, text=True, encoding=_enc, shell=True, timeout=60,
         )
         applied = 0
-        for line in result.stdout.splitlines():
+        for line in (result.stdout or "").splitlines():
             if "=" in line:
                 k, v = line.split("=", 1)
                 os.environ[k] = v
@@ -1139,8 +1150,9 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       _appendLogData('✓ 训练脚本已生成: $scriptPath\n${'=' * 50}\n\n');
       trainingLog.value = _buildLogDisplay();
 
+      final py = _venvPythonPath ?? 'python';
       _trainingProcess = await Process.start(
-        'python',
+        py,
         ['-u', '-X', 'utf8', '_flutter_train.py'],
         workingDirectory: repoPath.value,
         runInShell: true,
@@ -1286,8 +1298,94 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
   // --- Environment ---
 
-  /// 检测 Python / pip 是否已安装
+  /// 项目内 venv 的 Python 路径（repoPath/python_venv/Scripts/python.exe）
+  String? get _venvPythonPath {
+    if (repoPath.value.isEmpty) return null;
+    final p = '${repoPath.value}${Platform.pathSeparator}python_venv'
+        '${Platform.pathSeparator}Scripts${Platform.pathSeparator}python.exe';
+    return p;
+  }
+
+  /// 检测 UV 是否已安装
+  Future<void> detectUv() async {
+    try {
+      final r = await Process.run(
+        'uv',
+        ['--version'],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      uvInstalled.value = r.exitCode == 0;
+    } catch (_) {
+      uvInstalled.value = false;
+    }
+  }
+
+  /// 通过 winget 一键安装 UV
+  Future<bool> installUv() async {
+    if (isUvInstalling.value) return false;
+    if (Platform.operatingSystem != 'windows') {
+      Get.snackbar('提示', '一键安装 UV 仅支持 Windows');
+      return false;
+    }
+    if (!wingetInstalled.value) {
+      Get.snackbar('需先安装 winget', '详见设置页顶部');
+      return false;
+    }
+    isUvInstalling.value = true;
+    uvInstallLog.value = '';
+    try {
+      uvInstallLog.value =
+          '▶ 正在通过 winget 安装 UV...\n'
+          '  包: astral-sh.uv\n'
+          '  系统会弹出 UAC 权限提示，请点击「是」\n\n';
+      final result = await Process.run(
+        'winget',
+        ['install', '--id', 'astral-sh.uv', '-e', '--accept-package-agreements', '--accept-source-agreements'],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      final out = (result.stdout as String).trim();
+      final err = (result.stderr as String).trim();
+      if (out.isNotEmpty) uvInstallLog.value += '$out\n';
+      if (err.isNotEmpty) uvInstallLog.value += '$err\n';
+      uvInstallLog.value +=
+          result.exitCode == 0
+              ? '\n✓ UV 安装完成！请重启应用。'
+              : '\n✗ 安装失败 (exit: ${result.exitCode})';
+      if (result.exitCode == 0) {
+        await detectUv();
+        Get.snackbar('安装完成', 'UV 已安装，请重启应用', duration: const Duration(seconds: 5));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      uvInstallLog.value += '\n✗ 执行出错: $e';
+      Get.snackbar('安装失败', '$e');
+      return false;
+    } finally {
+      isUvInstalling.value = false;
+    }
+  }
+
+  /// 检测 Python / pip 是否已安装（优先检测项目 venv，其次系统 pip）
   Future<void> detectPython() async {
+    final venv = _venvPythonPath;
+    if (venv != null) {
+      try {
+        final r = await Process.run(
+          venv,
+          ['--version'],
+          runInShell: true,
+          stdoutEncoding: utf8,
+          stderrEncoding: utf8,
+        );
+        pythonInstalled.value = r.exitCode == 0;
+        return;
+      } catch (_) {}
+    }
     try {
       final r = await Process.run(
         'pip',
@@ -1362,132 +1460,81 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
   Future<void> installEnvironment() async {
     if (isInstalling.value) return;
+    if (repoPath.value.isEmpty) {
+      Get.snackbar('提示', '请等待仓库初始化完成，或先在数据页选择仓库路径');
+      return;
+    }
     isInstalling.value = true;
     installLog.value = '';
 
     try {
-      // ── 1. 检测 pip ───────────────────────────────────────────────
-      installLog.value += '▶ 检测 Python / pip 环境...\n';
-      final pipResult = await Process.run(
-        'pip',
-        ['--version'],
-        runInShell: true,
-        stdoutEncoding: utf8,
-        stderrEncoding: utf8,
-      );
-      if (pipResult.exitCode != 0) {
-        installLog.value += '✗ 未找到 pip，正在自动安装 Python 3.12...\n\n';
-        final ok = await installPython();
-        if (ok) {
-          installLog.value += '\n→ 请重启应用后再次点击「一键安装」以安装依赖包。\n';
-        }
+      // ── 1. 检测 UV ───────────────────────────────────────────────
+      installLog.value += '▶ 检测 UV（虚拟环境工具）...\n';
+      await detectUv();
+      if (!uvInstalled.value) {
+        installLog.value += '✗ 未找到 UV，正在自动安装...\n\n';
+        final ok = await installUv();
+        if (ok) installLog.value += '\n→ 请重启应用后再次点击「一键安装」。\n';
         return;
       }
-      installLog.value += '✓ ${(pipResult.stdout as String).trim()}\n';
+      installLog.value += '✓ UV 已安装\n';
+      installLog.value += '  依赖将安装到项目目录: ${repoPath.value}/python_venv\n\n';
 
-      // ── 2. 显示 pip 源（方便排查网络问题）──────────────────────────
-      final indexResult = await Process.run(
-        'pip',
-        ['config', 'get', 'global.index-url'],
-        runInShell: true,
-        stdoutEncoding: utf8,
-        stderrEncoding: utf8,
-      );
-      final indexUrl = (indexResult.stdout as String).trim();
-      installLog.value +=
-          '  pip 源: ${indexUrl.isNotEmpty ? indexUrl : "(默认 PyPI)"}\n\n';
+      // ── 2. 创建/确认 venv ───────────────────────────────────────
+      final venvDir = '${repoPath.value}${Platform.pathSeparator}python_venv';
+      final venvPy = '$venvDir${Platform.pathSeparator}Scripts${Platform.pathSeparator}python.exe';
+      if (!await File(venvPy).exists()) {
+        installLog.value += '▶ 创建虚拟环境 python_venv（Python 3.12）...\n';
+        final venvResult = await Process.run(
+          'uv',
+          ['venv', './python_venv', '--python', '3.12'],
+          workingDirectory: repoPath.value,
+          runInShell: true,
+          stdoutEncoding: utf8,
+          stderrEncoding: utf8,
+        );
+        if (venvResult.exitCode != 0) {
+          installLog.value += '✗ 创建 venv 失败\n';
+          installLog.value += '${venvResult.stderr}\n';
+          return;
+        }
+        installLog.value += '✓ 虚拟环境已创建\n\n';
+      } else {
+        installLog.value += '✓ 虚拟环境已存在: python_venv\n\n';
+      }
 
-      // ── 3. 确定 torch GPU CUDA wheel 源 ──────────────────────────
+      // ── 3. 安装依赖包（使用 uv pip，目标 venv）──────────────────
       final torchWheelTag = _getCudaWheelTag();
       final torchIndexUrl = 'https://download.pytorch.org/whl/$torchWheelTag';
-      installLog.value +=
-          '▶ 将安装 GPU (CUDA) 版本 torch\n'
-          '  CUDA wheel tag : $torchWheelTag\n'
-          '  PyTorch 镜像源 : $torchIndexUrl\n\n';
+      installLog.value += '▶ 将安装 GPU (CUDA) torch，tag: $torchWheelTag\n\n';
 
-      // ── 4. 逐包安装 ───────────────────────────────────────────────
       final failed = <String>[];
       for (final pkg in _envPackages) {
         installLog.value += '─' * 50 + '\n';
         installLog.value += '▶ 安装 $pkg ...\n';
 
+        final args = ['pip', 'install', '--python', './python_venv/Scripts/python.exe', pkg];
         if (pkg.startsWith('torch')) {
-          // ── torch：先卸载旧版本，再用 Process.run 从 GPU wheel 源安装 ──
-          // 使用 Process.run（阻塞式）而非 Process.start，避免 Windows 上
-          // 异步流监听器与 exitCode 之间的竞态导致 stderr 输出丢失。
-          installLog.value += '  先卸载已安装的 torch（避免 CPU/GPU 版本冲突）...\n';
-          final uninstall = await Process.run(
-            'pip',
-            ['uninstall', 'torch', '-y'],
-            runInShell: true,
-            stdoutEncoding: utf8,
-            stderrEncoding: utf8,
-          );
-          final uninstallLines = [
-            (uninstall.stdout as String).trim(),
-            (uninstall.stderr as String).trim(),
-          ].where((s) => s.isNotEmpty).join('\n');
-          if (uninstallLines.isNotEmpty) {
-            installLog.value += '  $uninstallLines\n';
-          }
-
-          installLog.value += '  正在从 PyTorch GPU 源下载，文件约 1–2 GB，请耐心等待...\n';
-
-          final torchResult = await Process.run(
-            'pip',
-            [
-              'install',
-              pkg,
-              '--index-url',
-              torchIndexUrl,
-              '--no-warn-script-location',
-              '--timeout',
-              '300',
-            ],
-            runInShell: true,
-            stdoutEncoding: utf8,
-            stderrEncoding: utf8,
-          );
-          final torchOut = (torchResult.stdout as String).trim();
-          final torchErr = (torchResult.stderr as String).trim();
-          if (torchOut.isNotEmpty) installLog.value += '$torchOut\n';
-          if (torchErr.isNotEmpty) installLog.value += '$torchErr\n';
-
-          if (torchResult.exitCode == 0) {
-            installLog.value += '✓ $pkg 安装成功\n\n';
-          } else {
-            failed.add(pkg);
-            installLog.value +=
-                '\n✗ $pkg 安装失败 (exit: ${torchResult.exitCode})\n\n';
-          }
-          continue; // 跳过下方通用安装逻辑
+          args.addAll(['--index-url', torchIndexUrl]);
+          installLog.value += '  从 PyTorch GPU 源下载（约 1–2 GB）...\n';
         }
 
-        // ── 其余包：保持原有流式安装方式 ─────────────────────────────────
-        final pipArgs = ['install', pkg, '--no-warn-script-location'];
+        final result = await Process.run(
+          'uv',
+          args,
+          workingDirectory: repoPath.value,
+          runInShell: true,
+          stdoutEncoding: utf8,
+          stderrEncoding: utf8,
+        );
+        if (result.stdout.toString().isNotEmpty) installLog.value += '${result.stdout}';
+        if (result.stderr.toString().isNotEmpty) installLog.value += '${result.stderr}';
 
-        final process = await Process.start('pip', pipArgs, runInShell: true);
-
-        // 同时等待 stdout/stderr 流耗尽，避免输出截断
-        final stdoutBuf = StringBuffer();
-        final stderrBuf = StringBuffer();
-        await Future.wait([
-          process.stdout.transform(utf8.decoder).forEach((d) {
-            stdoutBuf.write(d);
-            installLog.value += d;
-          }),
-          process.stderr.transform(utf8.decoder).forEach((d) {
-            stderrBuf.write(d);
-            installLog.value += d;
-          }),
-        ]);
-
-        final code = await process.exitCode;
-        if (code == 0) {
+        if (result.exitCode == 0) {
           installLog.value += '✓ $pkg 安装成功\n\n';
         } else {
           failed.add(pkg);
-          installLog.value += '\n✗ $pkg 安装失败 (exit: $code)\n\n';
+          installLog.value += '\n✗ $pkg 安装失败 (exit: ${result.exitCode})\n\n';
         }
       }
 
@@ -1536,9 +1583,13 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     try {
       // ── 1. ninja ─────────────────────────────────────────────────
       buildToolsLog.value += '▶ 安装 ninja 构建工具...\n';
+      final useUv = repoPath.value.isNotEmpty && uvInstalled.value;
       final ninjaResult = await Process.run(
-        'pip',
-        ['install', 'ninja', '--no-warn-script-location'],
+        useUv ? 'uv' : 'pip',
+        useUv
+            ? ['pip', 'install', '--python', './python_venv/Scripts/python.exe', 'ninja']
+            : ['install', 'ninja', '--no-warn-script-location'],
+        workingDirectory: useUv ? repoPath.value : null,
         runInShell: true,
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
@@ -1634,13 +1685,16 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     checkLog.value = '正在检测环境...\n';
     envReady.value = false;
     try {
-      // 先检测 Python / pip
+      // 先检测 UV 和 Python（项目 venv 或系统）
+      await detectUv();
       await detectPython();
+      final py = _venvPythonPath ?? 'python';
       if (!pythonInstalled.value) {
-        checkLog.value += '✗ 未找到 Python / pip\n'
-            '  请点击「一键安装 Python」或「一键安装」\n\n';
+        checkLog.value += '✗ 未找到可用 Python\n'
+            '  请点击「一键安装」安装 UV 并创建项目虚拟环境\n\n';
       } else {
-        checkLog.value += '✓ Python / pip 已安装\n';
+        checkLog.value +=
+            '✓ 使用: ${_venvPythonPath != null ? "项目 venv (python_venv)" : "系统 Python"}\n';
       }
       final missing = <String>[];
       bool torchHasCuda = false;
@@ -1648,18 +1702,18 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         for (final pkg in _envCheckPackages) {
           missing.add(pkg);
         }
-        checkLog.value += '\n缺少: ${missing.join(", ")}（需先安装 Python）';
+        checkLog.value += '\n缺少: ${missing.join(", ")}';
         Get.snackbar(
           '环境检测',
-          '未检测到 Python，请点击「一键安装 Python」',
+          '请点击「一键安装」安装 UV 和依赖',
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 5),
         );
       } else {
         for (final pkg in _envCheckPackages) {
           final result = await Process.run(
-            'pip',
-            ['show', pkg],
+            py,
+            ['-m', 'pip', 'show', pkg],
             runInShell: true,
             stdoutEncoding: utf8,
             stderrEncoding: utf8,
@@ -1676,7 +1730,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         if (!missing.contains('torch')) {
           checkLog.value += '\n▶ 检测 torch CUDA 支持...\n';
           final cudaCheck = await Process.run(
-            'python',
+            py,
             [
               '-c',
               'import torch; '
