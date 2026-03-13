@@ -247,19 +247,19 @@ class HomePage extends GetView<HomeController> {
                 Expanded(
                   child: _labeledField('词表大小 (vocab_size)',
                       controller.vocabSizeController,
-                      hint: '65536', keyboardType: TextInputType.number),
+                      hint: '65536', keyboardType: TextInputType.number, readOnly: true),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: _labeledField('嵌入维度 (n_embd)',
                       controller.nEmbdController,
-                      hint: '1024', keyboardType: TextInputType.number),
+                      hint: '1024', keyboardType: TextInputType.number, readOnly: true),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: _labeledField('层数 (n_layer)',
                       controller.nLayerController,
-                      hint: '24', keyboardType: TextInputType.number),
+                      hint: '24', keyboardType: TextInputType.number, readOnly: true),
                 ),
               ],
             ),
@@ -1470,6 +1470,7 @@ class HomePage extends GetView<HomeController> {
     TextInputType keyboardType = TextInputType.text,
     VoidCallback? onBrowse,
     IconData browseIcon = Icons.folder_open,
+    bool readOnly = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1482,6 +1483,7 @@ class HomePage extends GetView<HomeController> {
             Expanded(
               child: TextField(
                 controller: ctrl,
+                readOnly: readOnly,
                 keyboardType: keyboardType,
                 style: const TextStyle(color: Colors.white, fontSize: 14),
                 decoration: InputDecoration(
