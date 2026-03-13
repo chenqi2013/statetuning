@@ -368,29 +368,34 @@ class HomePage extends GetView<HomeController> {
                     onBrowse: controller.pickDataFile,
                     browseIcon: Icons.file_open),
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1D21),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF3A3F47)),
-                  ),
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('数据格式示例 (每行一个 JSON):',
+                SizedBox(
+                  width: double.infinity,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1D21),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF3A3F47)),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('数据格式示例 (每行一个 JSON):',
+                            style: TextStyle(
+                                color: Color(0xFF6B7280), fontSize: 12)),
+                        SizedBox(height: 6),
+                        SelectableText(
+                          '{"text": "User: 你好\\n\\nAssistant: 你好！有什么可以帮助你的吗？\\n\\n"}\n'
+                          '{"text": "User: 讲个笑话\\n\\nAssistant: 好的...\\n\\n"}',
                           style: TextStyle(
-                              color: Color(0xFF6B7280), fontSize: 12)),
-                      SizedBox(height: 6),
-                      SelectableText(
-                        '{"text": "User: 你好\\n\\nAssistant: 你好！有什么可以帮助你的吗？\\n\\n"}\n'
-                        '{"text": "User: 讲个笑话\\n\\nAssistant: 好的...\\n\\n"}',
-                        style: TextStyle(
-                            color: Color(0xFF86EFAC),
-                            fontSize: 12,
-                            fontFamily: 'monospace'),
-                      ),
-                    ],
+                              color: Color(0xFF86EFAC),
+                              fontSize: 12,
+                              fontFamily: 'monospace'),
+                          textAlign: TextAlign.left,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
