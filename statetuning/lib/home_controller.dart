@@ -1710,14 +1710,28 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           duration: const Duration(seconds: 5),
         );
       } else {
+        // UV venv 默认无 pip，用 uv pip show 检测；系统 Python 用 python -m pip show
+        final useUvCheck = _venvPythonPath != null && uvInstalled.value;
         for (final pkg in _envCheckPackages) {
-          final result = await Process.run(
-            py,
-            ['-m', 'pip', 'show', pkg],
-            runInShell: true,
-            stdoutEncoding: utf8,
-            stderrEncoding: utf8,
-          );
+          final pkgName = pkg.replaceAll('_', '-'); // huggingface_hub -> huggingface-hub
+          final ProcessResult result;
+          if (useUvCheck) {
+            result = await Process.run(
+              'uv',
+              ['pip', 'show', '--python', _venvPythonPath!, pkgName],
+              runInShell: true,
+              stdoutEncoding: utf8,
+              stderrEncoding: utf8,
+            );
+          } else {
+            result = await Process.run(
+              py,
+              ['-m', 'pip', 'show', pkg],
+              runInShell: true,
+              stdoutEncoding: utf8,
+              stderrEncoding: utf8,
+            );
+          }
           if (result.exitCode == 0) {
             checkLog.value += '✓ $pkg 已安装\n';
           } else {
