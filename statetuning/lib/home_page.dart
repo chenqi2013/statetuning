@@ -280,6 +280,85 @@ class HomePage extends GetView<HomeController> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionCard(
+            title: 'Git 检测（克隆仓库必需）',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Obx(() {
+                  if (controller.gitInstalled.value) {
+                    return Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Color(0xFF22C55E), size: 20),
+                        const SizedBox(width: 8),
+                        const Text('Git 已安装，可以克隆仓库',
+                            style: TextStyle(color: Color(0xFF22C55E), fontSize: 13)),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: controller.detectGit,
+                          icon: const Icon(Icons.refresh, size: 16),
+                          label: const Text('重新检测'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF6B7280),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded,
+                              color: Color(0xFFFBBF24), size: 20),
+                          SizedBox(width: 8),
+                          Text('未检测到 Git，无法克隆',
+                              style: TextStyle(color: Color(0xFFFBBF24), fontSize: 13)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: controller.detectGit,
+                            icon: const Icon(Icons.search, size: 18),
+                            label: const Text('检测 Git'),
+                            style: _btnStyle(const Color(0xFF3B82F6), compact: true),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton.icon(
+                            onPressed: controller.isGitInstalling.value
+                                ? null
+                                : controller.installGit,
+                            icon: controller.isGitInstalling.value
+                                ? const SizedBox(
+                                    width: 18, height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Icon(Icons.download, size: 18),
+                            label: Text(controller.isGitInstalling.value
+                                ? '安装中...'
+                                : '一键安装 Git'),
+                            style: _btnStyle(const Color(0xFF7C3AED), compact: true),
+                          ),
+                        ],
+                      ),
+                      if (controller.gitInstallLog.value.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        _logLabel('Git 安装日志'),
+                        const SizedBox(height: 8),
+                        Obx(() => _logBox(controller.gitInstallLog.value)),
+                      ],
+                    ],
+                  );
+                }),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          _sectionCard(
             title: '仓库来源 (github.com/Joluck/statetuning)',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -290,19 +369,20 @@ class HomePage extends GetView<HomeController> {
                     onBrowse: controller.pickRepoDir),
                 const SizedBox(height: 4),
                 const Text(
-                  '选择文件夹后自动检测；或使用下方按钮获取仓库',
+                  '选择文件夹后自动检测；或使用下方按钮获取仓库（需先安装 Git）',
                   style: TextStyle(color: Color(0xFF4B5563), fontSize: 12),
                 ),
                 const SizedBox(height: 14),
                 // 操作按钮
                 Obx(() {
                   final busy = controller.isCloningRepo.value;
+                  final hasGit = controller.gitInstalled.value;
                   return Row(
                     children: [
                       // 从 GitHub 克隆
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: busy ? null : controller.cloneRepo,
+                          onPressed: (busy || !hasGit) ? null : controller.cloneRepo,
                           icon: busy
                               ? const SizedBox(
                                   width: 16, height: 16,
@@ -311,7 +391,7 @@ class HomePage extends GetView<HomeController> {
                                 )
                               : const Icon(Icons.download, size: 18),
                           label: Text(
-                              busy ? '克隆中...' : '从 GitHub 克隆',
+                              busy ? '克隆中...' : (hasGit ? '从 GitHub 克隆' : '克隆（需先安装 Git）'),
                               style: const TextStyle(fontSize: 13)),
                           style: _btnStyle(const Color(0xFF6366F1)),
                         ),
@@ -1076,7 +1156,56 @@ class HomePage extends GetView<HomeController> {
                 ),
               )
             else ...[
-              // ── 环境有问题：显示完整安装区 ───────────────────────
+              // ── 未安装 Python 时优先显示 ────────────────────────────
+              Obx(() {
+                if (!controller.pythonInstalled.value) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded,
+                              color: Color(0xFFFBBF24), size: 20),
+                          SizedBox(width: 8),
+                          Text('未检测到 Python，需先安装',
+                              style: TextStyle(color: Color(0xFFFBBF24),
+                                  fontSize: 14, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: controller.isPythonInstalling.value
+                              ? null
+                              : controller.installPython,
+                          icon: controller.isPythonInstalling.value
+                              ? const SizedBox(
+                                  width: 20, height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.download),
+                          label: Text(controller.isPythonInstalling.value
+                              ? '安装中...'
+                              : '一键安装 Python 3.12'),
+                          style: _btnStyle(const Color(0xFF7C3AED)),
+                        ),
+                      ),
+                      if (controller.pythonInstallLog.value.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        _logLabel('Python 安装日志'),
+                        const SizedBox(height: 8),
+                        Obx(() => _logBox(controller.pythonInstallLog.value)),
+                      ],
+                      const SizedBox(height: 20),
+                      const Divider(color: Color(0xFF3A3F47)),
+                      const SizedBox(height: 12),
+                    ],
+                  );
+                }
+                return const SizedBox.shrink();
+              }),
               const Text(
                 '以下依赖缺失或需更新，点击「一键安装」自动安装：\n'
                 '(来源: github.com/Joluck/statetuning)',

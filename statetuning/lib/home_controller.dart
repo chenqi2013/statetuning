@@ -81,6 +81,11 @@ class HomeController extends GetxController {
   final repoLog = ''.obs;
   final repoCloned = false.obs;
 
+  // --- Git (克隆仓库依赖) ---
+  final gitInstalled = false.obs;
+  final isGitInstalling = false.obs;
+  final gitInstallLog = ''.obs;
+
   // --- Output Files ---
   final outputFiles = <String>[].obs;
 
@@ -106,6 +111,11 @@ class HomeController extends GetxController {
   final isChecking = false.obs;
   final envReady = false.obs;
   final checkLog = ''.obs;
+
+  // --- Python (pip 依赖) ---
+  final pythonInstalled = false.obs;
+  final isPythonInstalling = false.obs;
+  final pythonInstallLog = ''.obs;
 
   // --- Build Tools (MSVC + ninja) ---
   final isBuildToolsInstalling = false.obs;
@@ -206,11 +216,14 @@ class HomeController extends GetxController {
 
     _detectGpu();
     detectCudaHome();
+    detectGit();
+    detectPython();
     // 启动时静默检测一次环境
     checkEnvironment();
-    // 切换到设置 tab（index 4）时自动重新检测
     ever(currentTabIndex, (idx) {
+      if (idx == 1) detectGit();
       if (idx == 4) {
+        detectPython();
         if (!isChecking.value) checkEnvironment();
         detectCudaHome();
       }
@@ -600,10 +613,80 @@ class HomeController extends GetxController {
     }
   }
 
+  /// 检测 Git 是否已安装（克隆仓库依赖）
+  Future<void> detectGit() async {
+    try {
+      final r = await Process.run(
+        'git',
+        ['--version'],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      gitInstalled.value = r.exitCode == 0;
+    } catch (_) {
+      gitInstalled.value = false;
+    }
+  }
+
+  /// 通过 winget 一键安装 Git
+  Future<void> installGit() async {
+    if (isGitInstalling.value) return;
+    if (Platform.operatingSystem != 'windows') {
+      Get.snackbar('提示', '一键安装 Git 仅支持 Windows');
+      return;
+    }
+    isGitInstalling.value = true;
+    gitInstallLog.value = '';
+    try {
+      gitInstallLog.value =
+          '▶ 正在通过 winget 安装 Git...\n'
+          '  系统会弹出 UAC 权限提示，请点击「是」\n\n';
+      final result = await Process.run(
+        'winget',
+        ['install', '-e', '--id', 'Git.Git', '--accept-package-agreements', '--accept-source-agreements'],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      final out = (result.stdout as String).trim();
+      final err = (result.stderr as String).trim();
+      if (out.isNotEmpty) gitInstallLog.value += '$out\n';
+      if (err.isNotEmpty) gitInstallLog.value += '$err\n';
+      gitInstallLog.value +=
+          result.exitCode == 0
+              ? '\n✓ Git 安装完成！请点击「检测 Git」或重启应用。'
+              : '\n✗ 安装失败 (exit: ${result.exitCode})，可从 https://git-scm.com 手动下载安装。';
+      if (result.exitCode == 0) {
+        await detectGit();
+        Get.snackbar(
+          '安装完成',
+          'Git 已安装，可以进行克隆操作',
+          snackPosition: SnackPosition.TOP,
+          duration: const Duration(seconds: 4),
+        );
+      }
+    } catch (e) {
+      gitInstallLog.value += '\n✗ 执行出错: $e';
+      Get.snackbar('安装失败', '$e');
+    } finally {
+      isGitInstalling.value = false;
+    }
+  }
+
   Future<void> cloneRepo() async {
     if (isCloningRepo.value) return;
     if (repoPath.value.isEmpty) {
       Get.snackbar('提示', '请先输入目标路径');
+      return;
+    }
+    if (!gitInstalled.value) {
+      Get.snackbar(
+        '未检测到 Git',
+        '克隆需要 Git，请点击「检测 Git」或「一键安装 Git」',
+        snackPosition: SnackPosition.TOP,
+        duration: const Duration(seconds: 5),
+      );
       return;
     }
     isCloningRepo.value = true;
@@ -1099,6 +1182,71 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
   // --- Environment ---
 
+  /// 检测 Python / pip 是否已安装
+  Future<void> detectPython() async {
+    try {
+      final r = await Process.run(
+        'pip',
+        ['--version'],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      pythonInstalled.value = r.exitCode == 0;
+    } catch (_) {
+      pythonInstalled.value = false;
+    }
+  }
+
+  /// 通过 winget 一键安装 Python 3.12
+  Future<bool> installPython() async {
+    if (isPythonInstalling.value) return false;
+    if (Platform.operatingSystem != 'windows') {
+      Get.snackbar('提示', '一键安装 Python 仅支持 Windows');
+      return false;
+    }
+    isPythonInstalling.value = true;
+    pythonInstallLog.value = '';
+    try {
+      pythonInstallLog.value =
+          '▶ 正在通过 winget 安装 Python 3.12...\n'
+          '  系统会弹出 UAC 权限提示，请点击「是」\n'
+          '  安装完成后请重启本应用，以便识别新安装的 Python\n\n';
+      final result = await Process.run(
+        'winget',
+        ['install', '-e', '--id', 'Python.Python.3.12', '--accept-package-agreements', '--accept-source-agreements'],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      final out = (result.stdout as String).trim();
+      final err = (result.stderr as String).trim();
+      if (out.isNotEmpty) pythonInstallLog.value += '$out\n';
+      if (err.isNotEmpty) pythonInstallLog.value += '$err\n';
+      pythonInstallLog.value +=
+          result.exitCode == 0
+              ? '\n✓ Python 3.12 安装完成！\n  请关闭并重新打开本应用，然后点击「一键安装」安装依赖包。'
+              : '\n✗ 安装失败 (exit: ${result.exitCode})，可从 https://www.python.org 手动下载安装。';
+      if (result.exitCode == 0) {
+        await detectPython();
+        Get.snackbar(
+          '安装完成',
+          'Python 已安装，请重启应用后点击「一键安装」继续',
+          snackPosition: SnackPosition.TOP,
+          duration: const Duration(seconds: 6),
+        );
+        return true;
+      }
+      return false;
+    } catch (e) {
+      pythonInstallLog.value += '\n✗ 执行出错: $e';
+      Get.snackbar('安装失败', '$e');
+      return false;
+    } finally {
+      isPythonInstalling.value = false;
+    }
+  }
+
   Future<void> installEnvironment() async {
     if (isInstalling.value) return;
     isInstalling.value = true;
@@ -1115,8 +1263,11 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         stderrEncoding: utf8,
       );
       if (pipResult.exitCode != 0) {
-        installLog.value += '✗ 未找到 pip，请先安装 Python 并确保已添加到 PATH\n';
-        Get.snackbar('安装失败', '未找到 pip，请先安装 Python');
+        installLog.value += '✗ 未找到 pip，正在自动安装 Python 3.12...\n\n';
+        final ok = await installPython();
+        if (ok) {
+          installLog.value += '\n→ 请重启应用后再次点击「一键安装」以安装依赖包。\n';
+        }
         return;
       }
       installLog.value += '✓ ${(pipResult.stdout as String).trim()}\n';
@@ -1361,67 +1512,88 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     checkLog.value = '正在检测环境...\n';
     envReady.value = false;
     try {
+      // 先检测 Python / pip
+      await detectPython();
+      if (!pythonInstalled.value) {
+        checkLog.value += '✗ 未找到 Python / pip\n'
+            '  请点击「一键安装 Python」或「一键安装」\n\n';
+      } else {
+        checkLog.value += '✓ Python / pip 已安装\n';
+      }
       final missing = <String>[];
-      for (final pkg in _envCheckPackages) {
-        final result = await Process.run(
-          'pip',
-          ['show', pkg],
-          runInShell: true,
-          stdoutEncoding: utf8,
-          stderrEncoding: utf8,
-        );
-        if (result.exitCode == 0) {
-          checkLog.value += '✓ $pkg 已安装\n';
-        } else {
-          checkLog.value += '✗ $pkg 未安装\n';
+      bool torchHasCuda = false;
+      if (!pythonInstalled.value) {
+        for (final pkg in _envCheckPackages) {
           missing.add(pkg);
         }
-      }
-
-      // 额外检测 torch 是否为 GPU (CUDA) 版本
-      bool torchHasCuda = false;
-      if (!missing.contains('torch')) {
-        checkLog.value += '\n▶ 检测 torch CUDA 支持...\n';
-        final cudaCheck = await Process.run(
-          'python',
-          [
-            '-c',
-            'import torch; '
-                'avail = torch.cuda.is_available(); '
-                'ver = torch.version.cuda or "N/A"; '
-                'print(f"cuda_available={avail}  cuda_version={ver}"); '
-                'exit(0 if avail else 1)',
-          ],
-          runInShell: true,
-          stdoutEncoding: utf8,
-          stderrEncoding: utf8,
+        checkLog.value += '\n缺少: ${missing.join(", ")}（需先安装 Python）';
+        Get.snackbar(
+          '环境检测',
+          '未检测到 Python，请点击「一键安装 Python」',
+          snackPosition: SnackPosition.TOP,
+          duration: const Duration(seconds: 5),
         );
-        final cudaOut = (cudaCheck.stdout as String).trim();
-        if (cudaCheck.exitCode == 0) {
-          torchHasCuda = true;
-          checkLog.value += '✓ torch GPU (CUDA) 版本正常  [$cudaOut]\n';
-        } else {
-          checkLog.value +=
-              '✗ torch 未检测到 CUDA GPU 支持（当前为 CPU 版本）\n'
-              '  请点击「一键安装」重新安装 GPU 版本 torch\n';
-          if (cudaOut.isNotEmpty) checkLog.value += '  详情: $cudaOut\n';
-          missing.add('torch(CUDA)');
-        }
-      }
-
-      if (missing.isEmpty) {
-        envReady.value = true;
-        checkLog.value += '\n所有环境已经准备好';
-        Get.snackbar('环境检测', '所有环境已准备好', snackPosition: SnackPosition.TOP);
       } else {
-        checkLog.value += '\n缺少或需重装: ${missing.join(", ")}';
-        if (!torchHasCuda && missing.contains('torch(CUDA)')) {
-          Get.snackbar(
-            '环境检测',
-            'torch 未启用 CUDA，请点击「一键安装」安装 GPU 版本',
-            snackPosition: SnackPosition.TOP,
-            duration: const Duration(seconds: 5),
+        for (final pkg in _envCheckPackages) {
+          final result = await Process.run(
+            'pip',
+            ['show', pkg],
+            runInShell: true,
+            stdoutEncoding: utf8,
+            stderrEncoding: utf8,
           );
+          if (result.exitCode == 0) {
+            checkLog.value += '✓ $pkg 已安装\n';
+          } else {
+            checkLog.value += '✗ $pkg 未安装\n';
+            missing.add(pkg);
+          }
+        }
+
+        // 额外检测 torch 是否为 GPU (CUDA) 版本
+        if (!missing.contains('torch')) {
+          checkLog.value += '\n▶ 检测 torch CUDA 支持...\n';
+          final cudaCheck = await Process.run(
+            'python',
+            [
+              '-c',
+              'import torch; '
+                  'avail = torch.cuda.is_available(); '
+                  'ver = torch.version.cuda or "N/A"; '
+                  'print(f"cuda_available={avail}  cuda_version={ver}"); '
+                  'exit(0 if avail else 1)',
+            ],
+            runInShell: true,
+            stdoutEncoding: utf8,
+            stderrEncoding: utf8,
+          );
+          final cudaOut = (cudaCheck.stdout as String).trim();
+          if (cudaCheck.exitCode == 0) {
+            torchHasCuda = true;
+            checkLog.value += '✓ torch GPU (CUDA) 版本正常  [$cudaOut]\n';
+          } else {
+            checkLog.value +=
+                '✗ torch 未检测到 CUDA GPU 支持（当前为 CPU 版本）\n'
+                '  请点击「一键安装」重新安装 GPU 版本 torch\n';
+            if (cudaOut.isNotEmpty) checkLog.value += '  详情: $cudaOut\n';
+            missing.add('torch(CUDA)');
+          }
+        }
+
+        if (missing.isEmpty) {
+          envReady.value = true;
+          checkLog.value += '\n所有环境已经准备好';
+          Get.snackbar('环境检测', '所有环境已准备好', snackPosition: SnackPosition.TOP);
+        } else {
+          checkLog.value += '\n缺少或需重装: ${missing.join(", ")}';
+          if (!torchHasCuda && missing.contains('torch(CUDA)')) {
+            Get.snackbar(
+              '环境检测',
+              'torch 未启用 CUDA，请点击「一键安装」安装 GPU 版本',
+              snackPosition: SnackPosition.TOP,
+              duration: const Duration(seconds: 5),
+            );
+          }
         }
       }
     } catch (e) {
