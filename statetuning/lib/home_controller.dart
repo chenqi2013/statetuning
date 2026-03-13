@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 enum TrainingPrecision { bf16, fp16, fp32 }
@@ -222,12 +224,12 @@ class HomeController extends GetxController {
     detectNvidiaDriver();
     _detectGpu();
     detectCudaHome();
-    detectGit();
     detectPython();
     // 启动时静默检测一次环境
     checkEnvironment();
+    // 首次进入自动解压内置仓库到 exe 同目录
+    Future.microtask(_ensureRepoExtracted);
     ever(currentTabIndex, (idx) {
-      if (idx == 1) detectGit();
       if (idx == 4) {
         detectWinget();
         detectNvidiaDriver();
@@ -745,51 +747,82 @@ class HomeController extends GetxController {
     }
   }
 
-  Future<void> cloneRepo() async {
-    if (isCloningRepo.value) return;
-    if (repoPath.value.isEmpty) {
-      Get.snackbar('提示', '请先输入目标路径');
-      return;
-    }
-    if (!gitInstalled.value) {
-      Get.snackbar(
-        '未检测到 Git',
-        '克隆需要 Git，请点击「检测 Git」或「一键安装 Git」',
-        snackPosition: SnackPosition.TOP,
-        duration: const Duration(seconds: 5),
-      );
-      return;
-    }
+  /// 默认仓库路径：exe 所在目录下的 statetuning_repo
+  String _getDefaultRepoPath() {
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
+    return '$exeDir${Platform.pathSeparator}statetuning_repo';
+  }
+
+  /// 首次进入时自动解压内置仓库到默认路径，无需用户操作
+  Future<void> _ensureRepoExtracted() async {
     isCloningRepo.value = true;
-    repoCloned.value = false;
-    repoLog.value = '正在克隆仓库 https://github.com/Joluck/statetuning ...\n';
     try {
-      final dir = Directory(repoPath.value);
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      final process = await Process.start(
-        'git',
-        ['clone', 'https://github.com/Joluck/statetuning', '.'],
-        workingDirectory: repoPath.value,
-        runInShell: true,
-      );
-      process.stdout.transform(utf8.decoder).listen((d) => repoLog.value += d);
-      process.stderr.transform(utf8.decoder).listen((d) => repoLog.value += d);
-      final exitCode = await process.exitCode;
-      if (exitCode == 0) {
+      final defaultPath = _getDefaultRepoPath();
+      final trainFile = File('$defaultPath${Platform.pathSeparator}train.py');
+      if (await trainFile.exists()) {
+        repoPath.value = defaultPath;
+        repoPathController.text = defaultPath;
         repoCloned.value = true;
-        repoLog.value += '\n✓ 仓库克隆成功！';
-        Get.snackbar('克隆成功', '仓库已克隆到 ${repoPath.value}');
-      } else {
-        repoLog.value += '\n✗ 克隆失败 (exit: $exitCode)';
-        Get.snackbar('克隆失败', '请检查路径和网络连接');
+        repoLog.value = '✓ 仓库已就绪: $defaultPath';
+        return;
       }
-    } catch (e) {
-      repoLog.value += '异常: $e';
-      Get.snackbar('克隆失败', '$e');
+      repoPath.value = defaultPath;
+      repoPathController.text = defaultPath;
+      await _extractZipToPath(defaultPath, managedByCaller: true);
     } finally {
       isCloningRepo.value = false;
+    }
+  }
+
+  /// 将内置 zip 解压到指定路径（供 _ensureRepoExtracted 和 initRepoFromBundle 复用）
+  /// [managedByCaller] 为 true 时由调用方管理 isCloningRepo，内部不再设置
+  Future<void> _extractZipToPath(String targetPath, {bool managedByCaller = false}) async {
+    if (!managedByCaller && isCloningRepo.value) return;
+    if (!managedByCaller) isCloningRepo.value = true;
+    repoCloned.value = false;
+    repoLog.value = '正在解压内置仓库到 $targetPath ...\n';
+    try {
+      final dir = Directory(targetPath);
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final data = await rootBundle.load('assets/statetuning_repo.zip');
+      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      final archive = ZipDecoder().decodeBytes(bytes);
+      final sep = Platform.pathSeparator;
+      final base = targetPath.endsWith(sep) ? targetPath : '$targetPath$sep';
+      for (final file in archive) {
+        final name = file.name.replaceAll('\\', '/');
+        if (file.isFile) {
+          final relPath = name.replaceAll('/', sep);
+          final outFile = File('$base$relPath');
+          await outFile.parent.create(recursive: true);
+          await outFile.writeAsBytes(file.content as List<int>);
+          repoLog.value += '  ✓ $name\n';
+        } else {
+          final relPath = name.replaceAll('/', sep).replaceAll(RegExp(r'/$'), '');
+          if (relPath.isEmpty) continue;
+          final outDir = Directory('$base$relPath');
+          await outDir.create(recursive: true);
+        }
+      }
+      repoCloned.value = true;
+      repoLog.value += '\n✓ 仓库就绪！';
+      await checkRepo();
+    } catch (e) {
+      repoLog.value += '异常: $e';
+    } finally {
+      if (!managedByCaller) isCloningRepo.value = false;
+    }
+  }
+
+  /// 手动解压到当前选择的路径（数据 tab 可选）
+  Future<void> initRepoFromBundle() async {
+    if (repoPath.value.isEmpty) {
+      Get.snackbar('提示', '请先选择或输入目标路径');
+      return;
+    }
+    await _extractZipToPath(repoPath.value);
+    if (repoCloned.value) {
+      Get.snackbar('初始化成功', '仓库已解压到 ${repoPath.value}');
     }
   }
 

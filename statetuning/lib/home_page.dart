@@ -11,28 +11,61 @@ class HomePage extends GetView<HomeController> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1D21),
-      body: Column(
+      body: Stack(
         children: [
-          _buildTopBar(),
-          _buildTabBar(),
-          Expanded(
-            child: Obx(() {
-              switch (controller.currentTabIndex.value) {
-                case 1:
-                  return _buildDataTab();
-                case 2:
-                  return _buildTrainTab();
-                case 3:
-                  return _buildMonitorTab(context);
-                case 4:
-                  return _buildExportTab();
-                case 5:
-                  return _buildSettingsTab();
-                default:
-                  return _buildModelTab();
-              }
-            }),
+          Column(
+            children: [
+              _buildTopBar(),
+              _buildTabBar(),
+              Expanded(
+                child: Obx(() {
+                  switch (controller.currentTabIndex.value) {
+                    case 1:
+                      return _buildDataTab();
+                    case 2:
+                      return _buildTrainTab();
+                    case 3:
+                      return _buildMonitorTab(context);
+                    case 4:
+                      return _buildExportTab();
+                    case 5:
+                      return _buildSettingsTab();
+                    default:
+                      return _buildModelTab();
+                  }
+                }),
+              ),
+            ],
           ),
+          Obx(() {
+            if (!controller.isCloningRepo.value) return const SizedBox.shrink();
+            return Container(
+              color: Colors.black54,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '正在初始化仓库...',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -280,140 +313,48 @@ class HomePage extends GetView<HomeController> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionCard(
-            title: 'Git 检测（克隆仓库必需）',
+            title: '训练仓库',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Obx(() {
-                  if (controller.gitInstalled.value) {
-                    return Row(
-                      children: [
-                        const Icon(Icons.check_circle, color: Color(0xFF22C55E), size: 20),
-                        const SizedBox(width: 8),
-                        const Text('Git 已安装，可以克隆仓库',
-                            style: TextStyle(color: Color(0xFF22C55E), fontSize: 13)),
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: controller.detectGit,
-                          icon: const Icon(Icons.refresh, size: 16),
-                          label: const Text('重新检测'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: const Color(0xFF6B7280),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.warning_amber_rounded,
-                              color: Color(0xFFFBBF24), size: 20),
-                          SizedBox(width: 8),
-                          Text('未检测到 Git，无法克隆',
-                              style: TextStyle(color: Color(0xFFFBBF24), fontSize: 13)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          ElevatedButton.icon(
-                            onPressed: controller.detectGit,
-                            icon: const Icon(Icons.search, size: 18),
-                            label: const Text('检测 Git'),
-                            style: _btnStyle(const Color(0xFF3B82F6), compact: true),
-                          ),
-                          const SizedBox(width: 12),
-                          ElevatedButton.icon(
-                            onPressed: controller.isGitInstalling.value
-                                ? null
-                                : controller.installGit,
-                            icon: controller.isGitInstalling.value
-                                ? const SizedBox(
-                                    width: 18, height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white),
-                                  )
-                                : const Icon(Icons.download, size: 18),
-                            label: Text(controller.isGitInstalling.value
-                                ? '安装中...'
-                                : '一键安装 Git'),
-                            style: _btnStyle(const Color(0xFF7C3AED), compact: true),
-                          ),
-                        ],
-                      ),
-                      if (controller.gitInstallLog.value.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        _logLabel('Git 安装日志'),
-                        const SizedBox(height: 8),
-                        Obx(() => _logBox(controller.gitInstallLog.value)),
-                      ],
-                    ],
-                  );
-                }),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          _sectionCard(
-            title: '仓库来源 (github.com/Joluck/statetuning)',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 路径输入 + 浏览已有文件夹
-                _labeledField('本地仓库路径', controller.repoPathController,
-                    hint: '选择或填写仓库所在文件夹',
-                    onBrowse: controller.pickRepoDir),
-                const SizedBox(height: 4),
                 const Text(
-                  '选择文件夹后自动检测；或使用下方按钮获取仓库（需先安装 Git）',
-                  style: TextStyle(color: Color(0xFF4B5563), fontSize: 12),
+                  '首次进入已自动解压内置仓库到 exe 同目录，可直接使用。',
+                  style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.4),
                 ),
-                const SizedBox(height: 14),
-                // 操作按钮
-                Obx(() {
-                  final busy = controller.isCloningRepo.value;
-                  final hasGit = controller.gitInstalled.value;
-                  return Row(
-                    children: [
-                      // 从 GitHub 克隆
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: (busy || !hasGit) ? null : controller.cloneRepo,
-                          icon: busy
-                              ? const SizedBox(
-                                  width: 16, height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Icon(Icons.download, size: 18),
-                          label: Text(
-                              busy ? '克隆中...' : (hasGit ? '从 GitHub 克隆' : '克隆（需先安装 Git）'),
-                              style: const TextStyle(fontSize: 13)),
-                          style: _btnStyle(const Color(0xFF6366F1)),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      // 检查路径
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: busy ? null : controller.checkRepo,
-                          icon: const Icon(Icons.check_circle_outline, size: 18),
-                          label: const Text('检查路径',
-                              style: TextStyle(fontSize: 13)),
-                          style: _btnStyle(const Color(0xFF6B7280)),
-                        ),
-                      ),
-                    ],
-                  );
-                }),
+                const SizedBox(height: 12),
+                _labeledField('仓库路径', controller.repoPathController,
+                    hint: '默认：exe 同目录 / statetuning_repo',
+                    onBrowse: controller.pickRepoDir),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: controller.isCloningRepo.value ? null : controller.checkRepo,
+                      icon: const Icon(Icons.check_circle_outline, size: 18),
+                      label: const Text('检查路径'),
+                      style: _btnStyle(const Color(0xFF6B7280), compact: true),
+                    ),
+                    const SizedBox(width: 12),
+                    Obx(() {
+                      if (!controller.repoCloned.value &&
+                          controller.repoPath.value.isNotEmpty) {
+                        return TextButton.icon(
+                          onPressed: controller.isCloningRepo.value
+                              ? null
+                              : controller.initRepoFromBundle,
+                          icon: const Icon(Icons.folder_copy, size: 16),
+                          label: const Text('解压到此处'),
+                          style: TextButton.styleFrom(foregroundColor: const Color(0xFF6366F1)),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 Obx(() => _logBox(controller.repoLog.value,
-                    minHeight: 60,
-                    placeholder: '选择文件夹 / 解压 ZIP / 克隆仓库后状态显示在此')),
+                    minHeight: 50,
+                    placeholder: '仓库状态显示在此')),
               ],
             ),
           ),
