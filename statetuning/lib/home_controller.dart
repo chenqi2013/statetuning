@@ -58,6 +58,9 @@ class HomeController extends GetxController {
   // --- CUDA ---
   final cudaHome = ''.obs;
   final cudaDetectLog = ''.obs;
+  final cudaInstalled = false.obs;
+  final isCudaInstalling = false.obs;
+  final cudaInstallLog = ''.obs;
 
   // --- Training State ---
   final isTraining = false.obs;
@@ -67,7 +70,10 @@ class HomeController extends GetxController {
   final lossHistory = <double>[].obs;
   Process? _trainingProcess;
   // 日志缓冲区 + 定时刷新，避免高频 stdout 触发过多 UI 重建
-  final _logBuf = StringBuffer();
+  // _logLines: 已完成的行列表；_logCurrentLine: 当前未换行的内容
+  // 通过正确处理 \r（tqdm 覆写进度条），避免日志无限膨胀
+  final _logLines = <String>[];
+  String _logCurrentLine = '';
   Timer? _logFlushTimer;
 
   // --- Repo State ---
@@ -204,7 +210,10 @@ class HomeController extends GetxController {
     checkEnvironment();
     // 切换到设置 tab（index 4）时自动重新检测
     ever(currentTabIndex, (idx) {
-      if (idx == 4 && !isChecking.value) checkEnvironment();
+      if (idx == 4) {
+        if (!isChecking.value) checkEnvironment();
+        detectCudaHome();
+      }
     });
   }
 
@@ -348,13 +357,15 @@ class HomeController extends GetxController {
     } catch (_) {}
 
     cudaDetectLog.value +=
-        '✗ 未自动检测到 CUDA，请手动选择安装目录\n'
+        '✗ 未自动检测到 CUDA，请手动选择安装目录或点击「一键安装 CUDA 12.8」\n'
         '  常见路径: C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.x\n';
+    cudaInstalled.value = false;
   }
 
   void _setCudaHome(String path) {
     cudaHome.value = path;
     cudaHomeController.text = path;
+    cudaInstalled.value = true;
   }
 
   /// 从 cudaHome 路径中提取 CUDA 版本并返回对应 PyTorch wheel tag（如 cu124）。
@@ -382,6 +393,53 @@ class HomeController extends GetxController {
     if (path != null) {
       _setCudaHome(path);
       cudaDetectLog.value = '✓ 手动设置: $path\n';
+    }
+  }
+
+  /// 通过 winget 一键安装 CUDA 12.8（需管理员权限）
+  Future<void> installCuda() async {
+    if (isCudaInstalling.value) return;
+    if (Platform.operatingSystem != 'windows') {
+      Get.snackbar('提示', '一键安装 CUDA 仅支持 Windows');
+      return;
+    }
+    isCudaInstalling.value = true;
+    cudaInstallLog.value = '';
+    try {
+      cudaInstallLog.value =
+          '▶ 正在通过 winget 安装 CUDA 12.8...\n'
+          '  包: Nvidia.CUDA --version 12.8\n'
+          '  系统会弹出 UAC 权限提示，请点击「是」\n'
+          '  安装过程可能需 5–15 分钟，请耐心等待\n\n';
+      final result = await Process.run(
+        'winget',
+        ['install', '-e', '--id', 'Nvidia.CUDA', '--version', '12.8', '--accept-package-agreements', '--accept-source-agreements'],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      final out = (result.stdout as String).trim();
+      final err = (result.stderr as String).trim();
+      if (out.isNotEmpty) cudaInstallLog.value += '$out\n';
+      if (err.isNotEmpty) cudaInstallLog.value += '$err\n';
+      cudaInstallLog.value +=
+          result.exitCode == 0
+              ? '\n✓ CUDA 12.8 安装完成！请点击「自动检测」刷新路径，或重启应用。'
+              : '\n✗ 安装失败 (exit: ${result.exitCode})，可尝试从 NVIDIA 官网手动下载安装。';
+      if (result.exitCode == 0) {
+        await detectCudaHome();
+        Get.snackbar(
+          '安装完成',
+          'CUDA 12.8 已安装，请重启应用后开始训练',
+          snackPosition: SnackPosition.TOP,
+          duration: const Duration(seconds: 5),
+        );
+      }
+    } catch (e) {
+      cudaInstallLog.value += '\n✗ 执行出错: $e';
+      Get.snackbar('安装失败', '$e');
+    } finally {
+      isCudaInstalling.value = false;
     }
   }
 
@@ -881,7 +939,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     isTraining.value = true;
     status.value = '训练中';
     trainingLog.value = '';
-    _logBuf.clear();
+    _logLines.clear();
+    _logCurrentLine = '';
     _lossMap.clear();
     lossHistory.value = [];
     currentTabIndex.value = 3;
@@ -890,10 +949,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       final scriptPath =
           '${repoPath.value}${Platform.pathSeparator}_flutter_train.py';
       await File(scriptPath).writeAsString(_buildTrainingScript());
-      _logBuf
-        ..write('✓ 训练脚本已生成: $scriptPath\n')
-        ..write('${'=' * 50}\n\n');
-      trainingLog.value = _logBuf.toString();
+      _appendLogData('✓ 训练脚本已生成: $scriptPath\n${'=' * 50}\n\n');
+      trainingLog.value = _buildLogDisplay();
 
       _trainingProcess = await Process.start(
         'python',
@@ -902,17 +959,16 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         runInShell: true,
       );
 
-      // 定时器每 150ms 将缓冲区一次性刷新到响应式变量，
-      // 把每秒数十次的 UI 重建压缩到每秒约 7 次，消除训练时的界面卡顿。
-      _logFlushTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
-        final s = _logBuf.toString();
+      // 定时器每 1000ms 刷新一次日志显示，大幅降低 UI 重建频率
+      _logFlushTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
+        final s = _buildLogDisplay();
         if (s != trainingLog.value) trainingLog.value = s;
       });
 
       // allowMalformed:true 防止 tqdm 特殊字节导致 stream 中断
       const dec = Utf8Codec(allowMalformed: true);
       void onData(String data) {
-        _logBuf.write(data);
+        _appendLogData(data);
         _parseLoss(data);
       }
       _trainingProcess!.stdout.transform(dec.decoder).listen(onData);
@@ -925,8 +981,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         final suffix = code == 0
             ? '\n${'=' * 50}\n✓ 训练成功完成！\n'
             : '\n✗ 训练异常退出 (exit: $code)\n';
-        _logBuf.write(suffix);
-        trainingLog.value = _logBuf.toString();
+        _appendLogData(suffix);
+        trainingLog.value = _buildLogDisplay();
 
         isTraining.value = false;
         status.value = code == 0 ? '训练完成' : '训练异常';
@@ -940,12 +996,51 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     } catch (e) {
       _logFlushTimer?.cancel();
       _logFlushTimer = null;
-      _logBuf.write('启动失败: $e\n');
-      trainingLog.value = _logBuf.toString();
+      _appendLogData('启动失败: $e\n');
+      trainingLog.value = _buildLogDisplay();
       isTraining.value = false;
       status.value = '空闲';
       Get.snackbar('启动失败', '$e');
     }
+  }
+
+  /// 处理一段原始输出，正确模拟终端的 \r / \n / \r\n 行为。
+  /// tqdm 用 \r 覆写当前行，不处理则每帧都追加新行导致日志爆炸。
+  void _appendLogData(String data) {
+    for (int i = 0; i < data.length; i++) {
+      final ch = data[i];
+      if (ch == '\r') {
+        if (i + 1 < data.length && data[i + 1] == '\n') {
+          // \r\n → 正常换行
+          _logLines.add(_logCurrentLine);
+          _logCurrentLine = '';
+          i++;
+        } else {
+          // 单独 \r → 回到行首（tqdm 覆写进度条）
+          _logCurrentLine = '';
+        }
+      } else if (ch == '\n') {
+        _logLines.add(_logCurrentLine);
+        _logCurrentLine = '';
+      } else {
+        _logCurrentLine += ch;
+      }
+    }
+  }
+
+  /// 从当前行缓冲区拼出用于显示的字符串，最多保留最后 300 行。
+  String _buildLogDisplay({String extra = ''}) {
+    const maxLines = 300;
+    final lines = _logLines.length > maxLines
+        ? _logLines.sublist(_logLines.length - maxLines)
+        : _logLines;
+    final sb = StringBuffer();
+    for (final l in lines) {
+      sb.writeln(l);
+    }
+    if (_logCurrentLine.isNotEmpty) sb.write(_logCurrentLine);
+    if (extra.isNotEmpty) sb.write(extra);
+    return sb.toString();
   }
 
   /// 从 tqdm 日志片段中提取 (step, loss) 并更新 lossHistory。
@@ -979,8 +1074,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       );
       _trainingProcess = null;
     }
-    _logBuf.write('\n⏹ 训练已手动停止\n');
-    trainingLog.value = _logBuf.toString();
+    _appendLogData('\n⏹ 训练已手动停止\n');
+    trainingLog.value = _buildLogDisplay();
     isTraining.value = false;
     status.value = '已停止';
   }

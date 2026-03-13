@@ -950,8 +950,8 @@ class HomePage extends GetView<HomeController> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'RWKV7 训练需要 CUDA_HOME 环境变量指向 CUDA 安装目录。\n'
-            '启动时会自动检测，也可手动选择。',
+            'RWKV7 训练需要 CUDA Toolkit（CUDA_HOME 指向安装目录）。\n'
+            '启动时自动检测，未检测到可点击「一键安装 CUDA 12.8」或手动选择。',
             style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.5),
           ),
           const SizedBox(height: 14),
@@ -971,33 +971,41 @@ class HomePage extends GetView<HomeController> {
                 style: _btnStyle(const Color(0xFF3B82F6), compact: true),
               ),
               const SizedBox(width: 12),
-              // 检测结果状态指示
               Obx(() {
-                final path = controller.cudaHome.value;
-                if (path.isEmpty) {
-                  return const Row(
-                    children: [
-                      Icon(Icons.warning_amber_rounded,
-                          color: Color(0xFFFBBF24), size: 18),
-                      SizedBox(width: 6),
-                      Text('未设置，训练时将尝试自动检测',
-                          style: TextStyle(
-                              color: Color(0xFFFBBF24), fontSize: 13)),
-                    ],
+                if (controller.cudaInstalled.value) {
+                  return Expanded(
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle,
+                            color: Color(0xFF22C55E), size: 18),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(controller.cudaHome.value,
+                              style: const TextStyle(
+                                  color: Color(0xFF22C55E), fontSize: 13),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                      ],
+                    ),
                   );
                 }
-                return Row(
-                  children: [
-                    const Icon(Icons.check_circle,
-                        color: Color(0xFF22C55E), size: 18),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(path,
-                          style: const TextStyle(
-                              color: Color(0xFF22C55E), fontSize: 13),
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                  ],
+                return Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: controller.isCudaInstalling.value
+                        ? null
+                        : controller.installCuda,
+                    icon: controller.isCudaInstalling.value
+                        ? const SizedBox(
+                            width: 18, height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.download, size: 18),
+                    label: Text(controller.isCudaInstalling.value
+                        ? '安装中...'
+                        : '一键安装 CUDA 12.8'),
+                    style: _btnStyle(const Color(0xFF7C3AED), compact: true),
+                  ),
                 );
               }),
             ],
@@ -1005,6 +1013,20 @@ class HomePage extends GetView<HomeController> {
           const SizedBox(height: 10),
           Obx(() => _logBox(controller.cudaDetectLog.value,
               minHeight: 50, placeholder: '点击「自动检测」检查 CUDA 安装')),
+          Obx(() {
+            if (controller.cudaInstallLog.value.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _logLabel('CUDA 安装日志'),
+                  const SizedBox(height: 8),
+                  _logBox(controller.cudaInstallLog.value),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );
