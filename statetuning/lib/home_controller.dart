@@ -81,6 +81,10 @@ class HomeController extends GetxController {
   final repoLog = ''.obs;
   final repoCloned = false.obs;
 
+  // --- 系统基础（全新电脑首要依赖）---
+  final wingetInstalled = false.obs;
+  final nvidiaDriverInstalled = false.obs;
+
   // --- Git (克隆仓库依赖) ---
   final gitInstalled = false.obs;
   final isGitInstalling = false.obs;
@@ -214,6 +218,8 @@ class HomeController extends GetxController {
       () => cudaHome.value = cudaHomeController.text,
     );
 
+    detectWinget();
+    detectNvidiaDriver();
     _detectGpu();
     detectCudaHome();
     detectGit();
@@ -223,6 +229,8 @@ class HomeController extends GetxController {
     ever(currentTabIndex, (idx) {
       if (idx == 1) detectGit();
       if (idx == 4) {
+        detectWinget();
+        detectNvidiaDriver();
         detectPython();
         if (!isChecking.value) checkEnvironment();
         detectCudaHome();
@@ -277,6 +285,51 @@ class HomeController extends GetxController {
         return 'fp16';
       case TrainingPrecision.fp32:
         return 'fp32';
+    }
+  }
+
+  /// 在浏览器中打开链接（仅 Windows）
+  Future<void> openUrl(String url) async {
+    if (Platform.operatingSystem == 'windows') {
+      try {
+        await Process.run('cmd', ['/c', 'start', '', url], runInShell: true);
+      } catch (_) {}
+    }
+  }
+
+  /// 检测 winget 是否可用（一键安装 Git/Python/CUDA/MSVC 的先决条件）
+  Future<void> detectWinget() async {
+    if (Platform.operatingSystem != 'windows') {
+      wingetInstalled.value = false;
+      return;
+    }
+    try {
+      final r = await Process.run(
+        'winget',
+        ['--version'],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      wingetInstalled.value = r.exitCode == 0;
+    } catch (_) {
+      wingetInstalled.value = false;
+    }
+  }
+
+  /// 检测 NVIDIA 驱动是否已安装（GPU 训练需先装驱动，再装 CUDA Toolkit）
+  Future<void> detectNvidiaDriver() async {
+    try {
+      final r = await Process.run(
+        'nvidia-smi',
+        [],
+        runInShell: true,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      nvidiaDriverInstalled.value = r.exitCode == 0;
+    } catch (_) {
+      nvidiaDriverInstalled.value = false;
     }
   }
 
@@ -414,6 +467,15 @@ class HomeController extends GetxController {
     if (isCudaInstalling.value) return;
     if (Platform.operatingSystem != 'windows') {
       Get.snackbar('提示', '一键安装 CUDA 仅支持 Windows');
+      return;
+    }
+    if (!wingetInstalled.value) {
+      Get.snackbar(
+        '需先安装 winget',
+        '请先安装「应用安装程序」以使用一键安装，详见设置页顶部',
+        snackPosition: SnackPosition.TOP,
+        duration: const Duration(seconds: 5),
+      );
       return;
     }
     isCudaInstalling.value = true;
@@ -634,6 +696,15 @@ class HomeController extends GetxController {
     if (isGitInstalling.value) return;
     if (Platform.operatingSystem != 'windows') {
       Get.snackbar('提示', '一键安装 Git 仅支持 Windows');
+      return;
+    }
+    if (!wingetInstalled.value) {
+      Get.snackbar(
+        '需先安装 winget',
+        '请先安装「应用安装程序」以使用一键安装，详见设置页顶部',
+        snackPosition: SnackPosition.TOP,
+        duration: const Duration(seconds: 5),
+      );
       return;
     }
     isGitInstalling.value = true;
@@ -1205,6 +1276,15 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       Get.snackbar('提示', '一键安装 Python 仅支持 Windows');
       return false;
     }
+    if (!wingetInstalled.value) {
+      Get.snackbar(
+        '需先安装 winget',
+        '请先安装「应用安装程序」以使用一键安装，详见设置页顶部',
+        snackPosition: SnackPosition.TOP,
+        duration: const Duration(seconds: 5),
+      );
+      return false;
+    }
     isPythonInstalling.value = true;
     pythonInstallLog.value = '';
     try {
@@ -1408,6 +1488,15 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   ///   2. winget 仅安装 MSVC C++ 编译器 + Windows SDK（~1.5 GB，无 IDE）
   Future<void> installBuildTools() async {
     if (isBuildToolsInstalling.value) return;
+    if (!wingetInstalled.value && Platform.operatingSystem == 'windows') {
+      Get.snackbar(
+        '需先安装 winget',
+        '请先安装「应用安装程序」以使用一键安装，详见设置页顶部',
+        snackPosition: SnackPosition.TOP,
+        duration: const Duration(seconds: 5),
+      );
+      return;
+    }
     isBuildToolsInstalling.value = true;
     buildToolsLog.value = '';
 

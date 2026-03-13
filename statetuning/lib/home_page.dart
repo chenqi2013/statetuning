@@ -1015,9 +1015,152 @@ class HomePage extends GetView<HomeController> {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
+          _buildSystemBaseCard(),
+          const SizedBox(height: 20),
           _buildCudaCard(),
           const SizedBox(height: 20),
           _buildEnvCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSystemBaseCard() {
+    return _sectionCard(
+      title: '系统基础（全新电脑必检）',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '以下为一键安装的先决条件，全新 Windows 请按顺序检查：',
+            style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 16),
+          Obx(() {
+            final winget = controller.wingetInstalled.value;
+            return _buildStatusRow(
+              'winget（应用安装程序）',
+              winget,
+              description: 'Git / Python / CUDA / MSVC 等一键安装均依赖 winget',
+              onRetry: controller.detectWinget,
+              whenMissing: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '全新系统可能未预装，请通过以下方式安装：',
+                    style: TextStyle(color: Color(0xFFFBBF24), fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => controller.openUrl('https://aka.ms/getwinget'),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('打开 winget 安装页'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF3B82F6),
+                      side: const BorderSide(color: Color(0xFF3B82F6)),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('或运行 PowerShell（以管理员身份）：',
+                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 11)),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    'Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe',
+                    style: const TextStyle(
+                      color: Color(0xFF86EFAC),
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 16),
+          Obx(() {
+            final nvidia = controller.nvidiaDriverInstalled.value;
+            return _buildStatusRow(
+              'NVIDIA 驱动',
+              nvidia,
+              description: 'GPU 训练需先装驱动，再装 CUDA Toolkit（无 NVIDIA 显卡可跳过）',
+              onRetry: controller.detectNvidiaDriver,
+              whenMissing: Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => controller.openUrl('https://www.nvidia.com/Download/index.aspx'),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('前往 NVIDIA 官网下载驱动'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF3B82F6),
+                      side: const BorderSide(color: Color(0xFF3B82F6)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusRow(
+    String label,
+    bool installed, {
+    required String description,
+    VoidCallback? onRetry,
+    Widget? whenMissing,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1D21),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: installed ? const Color(0xFF22C55E) : const Color(0xFF3A3F47),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                installed ? Icons.check_circle : Icons.warning_amber_rounded,
+                color: installed ? const Color(0xFF22C55E) : const Color(0xFFFBBF24),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: installed ? const Color(0xFF22C55E) : Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (onRetry != null) ...[
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh, size: 14),
+                  label: const Text('重新检测'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF6B7280),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            description,
+            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+          ),
+          if (!installed && whenMissing != null) ...[
+            const SizedBox(height: 12),
+            whenMissing,
+          ],
         ],
       ),
     );
