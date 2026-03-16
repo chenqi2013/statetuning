@@ -133,39 +133,48 @@ class HomePage extends GetView<HomeController> {
 
   // ─── Tab Bar ─────────────────────────────────────────────────────────────────
 
+  /// 内容索引 -> 标签。0=模型 1=数据 2=训练 3=监控 4=导出 5=设置
+  static const _tabLabels = ['模型', '数据', '训练', '监控', '导出', '设置'];
+
+  /// 环境未就绪时设置放第一位，就绪后放最后
+  List<int> _tabOrder() =>
+      controller.envReady.value ? [0, 1, 2, 3, 4, 5] : [5, 0, 1, 2, 3, 4];
+
   Widget _buildTabBar() {
-    const tabs = ['模型', '数据', '训练', '监控', '导出', '设置'];
     return Obx(
-      () => Container(
-        color: const Color(0xFF1A1D21),
-        child: Row(
-          children: List.generate(tabs.length, (i) {
-            final selected = controller.currentTabIndex.value == i;
-            return GestureDetector(
-              onTap: () => controller.setTabIndex(i),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: selected ? const Color(0xFF3B82F6) : Colors.transparent,
-                      width: 2,
+      () {
+        final order = _tabOrder();
+        return Container(
+          color: const Color(0xFF1A1D21),
+          child: Row(
+            children: order.map((contentIndex) {
+              final selected = controller.currentTabIndex.value == contentIndex;
+              return GestureDetector(
+                onTap: () => controller.setTabIndex(contentIndex),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: selected ? const Color(0xFF3B82F6) : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  child: Text(
+                    _tabLabels[contentIndex],
+                    style: TextStyle(
+                      color: selected ? Colors.white : const Color(0xFF6B7280),
+                      fontSize: 15,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
                     ),
                   ),
                 ),
-                child: Text(
-                  tabs[i],
-                  style: TextStyle(
-                    color: selected ? Colors.white : const Color(0xFF6B7280),
-                    fontSize: 15,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-      ),
+              );
+            }).toList(),
+          ),
+        );
+      },
     );
   }
 
@@ -1142,14 +1151,14 @@ class HomePage extends GetView<HomeController> {
         children: [
           const Text(
             'RWKV7 训练需要 CUDA Toolkit（CUDA_HOME 指向安装目录）。\n'
-            '启动时自动检测，未检测到可点击「一键安装 CUDA 12.8」或手动选择。',
+            '启动时自动检测，未检测到可点击「一键安装 CUDA」或手动选择。',
             style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.5),
           ),
           const SizedBox(height: 14),
           _labeledField(
             'CUDA 安装目录',
             controller.cudaHomeController,
-            hint: r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x',
+            hint: r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x 或 v13.x',
             onBrowse: controller.pickCudaHomeDir,
           ),
           const SizedBox(height: 12),
@@ -1194,7 +1203,7 @@ class HomePage extends GetView<HomeController> {
                         : const Icon(Icons.download, size: 18),
                     label: Text(controller.isCudaInstalling.value
                         ? '安装中...'
-                        : '一键安装 CUDA 12.8'),
+                        : '一键安装 CUDA'),
                     style: _btnStyle(const Color(0xFF7C3AED), compact: true),
                   ),
                 );

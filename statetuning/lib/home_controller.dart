@@ -120,6 +120,7 @@ class HomeController extends GetxController {
   final isChecking = false.obs;
   final envReady = false.obs;
   final checkLog = ''.obs;
+  bool _hasGuidedToSettings = false;
 
   // --- UV + 项目内虚拟环境 (替代系统 Python/pip，依赖装项目目录) ---
   final uvInstalled = false.obs;
@@ -399,8 +400,15 @@ class HomeController extends GetxController {
         if (entry is Directory) versions.add(entry.path);
       }
       if (versions.isNotEmpty) {
-        // 取版本号最大的
-        versions.sort();
+        // 按版本号排序（如 v12.8 < v13.2），取最大
+        versions.sort((a, b) {
+          final va = _parseCudaVersionFromPath(a);
+          final vb = _parseCudaVersionFromPath(b);
+          if (va == null) return 1;
+          if (vb == null) return -1;
+          if (va.$1 != vb.$1) return va.$1.compareTo(vb.$1);
+          return va.$2.compareTo(vb.$2);
+        });
         final latest = versions.last;
         final nvcc = File(
           '$latest${Platform.pathSeparator}bin${Platform.pathSeparator}nvcc.exe',
@@ -433,8 +441,8 @@ class HomeController extends GetxController {
     } catch (_) {}
 
     cudaDetectLog.value +=
-        '✗ 未自动检测到 CUDA，请手动选择安装目录或点击「一键安装 CUDA 12.8」\n'
-        '  常见路径: C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.x\n';
+        '✗ 未自动检测到 CUDA，请手动选择安装目录或点击「一键安装 CUDA」\n'
+        '  常见路径: C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.x 或 v13.x\n';
     cudaInstalled.value = false;
   }
 
@@ -444,8 +452,23 @@ class HomeController extends GetxController {
     cudaInstalled.value = true;
   }
 
-  /// 从 cudaHome 路径中提取 CUDA 版本并返回对应 PyTorch wheel tag（如 cu124）。
-  /// 若无法解析则返回默认值 'cu124'。
+  /// 从路径中解析 CUDA 版本，如 .../v12.8/... 或 .../CUDA/v13.2/... 返回 (12,8) 或 (13,2)
+  (int, int)? _parseCudaVersionFromPath(String path) {
+    final segments = path.replaceAll('\\', '/').split('/');
+    for (final seg in segments.reversed) {
+      final m = RegExp(r'^[vV]?(\d+)\.(\d+)').firstMatch(seg);
+      if (m != null) {
+        final major = int.tryParse(m.group(1)!);
+        final minor = int.tryParse(m.group(2)!);
+        if (major != null && minor != null) return (major, minor);
+      }
+    }
+    return null;
+  }
+
+  /// 从 cudaHome 路径提取 CUDA 版本，映射到 PyTorch 支持的 wheel tag。
+  /// PyTorch 支持: cu118, cu121, cu124, cu126, cu128, cu130 等。
+  /// 若无法解析或版本较新则返回兼容的最近 tag。
   String _getCudaWheelTag() {
     final home = cudaHome.value;
     if (home.isNotEmpty) {
@@ -453,13 +476,22 @@ class HomeController extends GetxController {
       for (final seg in segments.reversed) {
         final m = RegExp(r'^[vV]?(\d+)\.(\d+)').firstMatch(seg);
         if (m != null) {
-          final major = m.group(1)!;
-          final minor = m.group(2)!;
-          return 'cu$major$minor'; // e.g., cu124
+          final major = int.tryParse(m.group(1)!) ?? 0;
+          final minor = int.tryParse(m.group(2)!) ?? 0;
+          // 映射到 PyTorch 实际支持的 tag
+          if (major == 11) return minor <= 8 ? 'cu118' : 'cu118';
+          if (major == 12) {
+            if (minor <= 1) return 'cu121';
+            if (minor <= 4) return 'cu124';
+            if (minor <= 6) return 'cu126';
+            if (minor <= 8) return 'cu128';
+            return 'cu128'; // 12.9+ 用 cu128
+          }
+          if (major >= 13) return 'cu130'; // 13.0, 13.2 等用 cu130
         }
       }
     }
-    return 'cu124';
+    return 'cu128'; // 未检测到时用较新版本
   }
 
   Future<void> pickCudaHomeDir() async {
@@ -472,7 +504,7 @@ class HomeController extends GetxController {
     }
   }
 
-  /// 通过 winget 一键安装 CUDA 12.8（需管理员权限）
+  /// 通过 winget 一键安装 CUDA 最新版（需管理员权限）
   Future<void> installCuda() async {
     if (isCudaInstalling.value) return;
     if (Platform.operatingSystem != 'windows') {
@@ -492,8 +524,8 @@ class HomeController extends GetxController {
     cudaInstallLog.value = '';
     try {
       cudaInstallLog.value =
-          '▶ 正在通过 winget 安装 CUDA 12.8...\n'
-          '  包: Nvidia.CUDA --version 12.8\n'
+          '▶ 正在通过 winget 安装 CUDA 最新版...\n'
+          '  包: Nvidia.CUDA（自动选择最新版本）\n'
           '  系统会弹出 UAC 权限提示，请点击「是」\n'
           '  安装过程可能需 5–15 分钟，请耐心等待\n\n';
       final result = await Process.run(
@@ -503,8 +535,6 @@ class HomeController extends GetxController {
           '-e',
           '--id',
           'Nvidia.CUDA',
-          '--version',
-          '12.8',
           '--accept-package-agreements',
           '--accept-source-agreements',
         ],
@@ -517,13 +547,13 @@ class HomeController extends GetxController {
       if (out.isNotEmpty) cudaInstallLog.value += '$out\n';
       if (err.isNotEmpty) cudaInstallLog.value += '$err\n';
       cudaInstallLog.value += result.exitCode == 0
-          ? '\n✓ CUDA 12.8 安装完成！请点击「自动检测」刷新路径，或重启应用。'
+          ? '\n✓ CUDA 安装完成！请点击「自动检测」刷新路径，或重启应用。'
           : '\n✗ 安装失败 (exit: ${result.exitCode})，可尝试从 NVIDIA 官网手动下载安装。';
       if (result.exitCode == 0) {
         await detectCudaHome();
         Get.snackbar(
           '安装完成',
-          'CUDA 12.8 已安装，请重启应用后开始训练',
+          'CUDA 已安装，请重启应用后开始训练',
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 5),
         );
@@ -1576,9 +1606,10 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       }
 
       // ── 3. 安装依赖包（使用 uv pip，目标 venv）──────────────────
-      const torchWheelTag = 'cu130';
+      await detectCudaHome();
+      final torchWheelTag = _getCudaWheelTag();
       final torchIndexUrl = 'https://download.pytorch.org/whl/$torchWheelTag';
-      installLog.value += '▶ 将安装 GPU (CUDA) torch，tag: $torchWheelTag\n\n';
+      installLog.value += '▶ 将安装 GPU (CUDA) torch，根据当前 CUDA 配置: $torchWheelTag\n\n';
 
       final venvPython = './python_venv/Scripts/python.exe';
       final failed = <String>[];
@@ -1613,7 +1644,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
           if (result.exitCode != 0) {
             installLog.value += '\n  UV 安装 torch 失败，尝试使用 pip 回退...\n';
-            // pip + --index-url：必须用主索引才能确保安装 cu130，否则会从 PyPI 装到 CPU 版
+            // pip + --index-url：必须用 PyTorch GPU 索引才能装到 CUDA 版，否则会从 PyPI 装到 CPU 版
             result = await Process.run(
               venvPython,
               ['-m', 'pip', 'install', pkg, '--index-url', torchIndexUrl],
@@ -1835,6 +1866,10 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 5),
         );
+        if (!_hasGuidedToSettings) {
+          _hasGuidedToSettings = true;
+          currentTabIndex.value = 5;
+        }
       } else {
         // UV venv 默认无 pip，用 uv pip show 检测；系统 Python 用 python -m pip show
         final useUvCheck = _venvPythonPath != null && uvInstalled.value;
@@ -1907,6 +1942,10 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           Get.snackbar('环境检测', '所有环境已准备好', snackPosition: SnackPosition.TOP);
         } else {
           checkLog.value += '\n缺少或需重装: ${missing.join(", ")}';
+          if (!_hasGuidedToSettings) {
+            _hasGuidedToSettings = true;
+            currentTabIndex.value = 5;
+          }
           if (!torchHasCuda && missing.contains('torch(CUDA)')) {
             Get.snackbar(
               '环境检测',
