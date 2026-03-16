@@ -1173,7 +1173,7 @@ for step in pbar:
 print("\\nTraining completed!")
 
 os.makedirs(train_args.output_dir, exist_ok=True)
-model_name = os.path.basename(train_args.load_model).replace(".pth", ".state")
+model_name = os.path.basename(train_args.load_model).replace(".pth", ".state.pth")
 save_path = os.path.join(train_args.output_dir, model_name)
 state_dict_to_save = {
     name.replace("model.", ""): param.cpu()

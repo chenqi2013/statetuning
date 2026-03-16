@@ -899,7 +899,7 @@ class HomePage extends GetView<HomeController> {
                       ),
                       child: const Center(
                         child: Text(
-                          '暂无输出文件\n训练完成后，.state 权重文件将显示在这里',
+                          '暂无输出文件\n训练完成后，.state.pth 权重文件将显示在这里',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                               color: Color(0xFF4B5563), fontSize: 14),
@@ -918,10 +918,10 @@ class HomePage extends GetView<HomeController> {
           _sectionCard(
             title: '使用说明',
             child: const Text(
-              '训练完成后，State 权重文件 (.state) 可加载到 RWKV 推理框架中。\n\n'
+              '训练完成后，State 权重文件 (.state.pth) 可加载到 RWKV 推理框架中。\n\n'
               '• 与原始 .pth 模型权重分开存储，体积极小\n'
-              '• 只包含经过微调的 state 参数\n'
-              '• 推理时合并使用: model.pth + xxx.state',
+              '• 只包含经过微调的 state 参数，pth 格式避免混淆\n'
+              '• 推理时合并使用: model.pth + xxx.state.pth',
               style: TextStyle(
                 color: Color(0xFFB0B5BC),
                 fontSize: 13,
