@@ -86,6 +86,8 @@ class HomeController extends GetxController {
   // --- 系统基础（全新电脑首要依赖）---
   final wingetInstalled = false.obs;
   final nvidiaDriverInstalled = false.obs;
+  /// winget 所在目录（不在 PATH 时自动查找并用于子进程）
+  String? _wingetDirForPath;
 
   // --- Git (克隆仓库依赖) ---
   final gitInstalled = false.obs;
@@ -309,11 +311,15 @@ class HomeController extends GetxController {
   }
 
   /// 检测 winget 是否可用（一键安装 Git/Python/CUDA/MSVC 的先决条件）
+  /// 若 winget 未在系统 PATH 中，自动查找常见安装位置并设置进程内 PATH
   Future<void> detectWinget() async {
     if (Platform.operatingSystem != 'windows') {
       wingetInstalled.value = false;
+      _wingetDirForPath = null;
       return;
     }
+    _wingetDirForPath = null;
+    // 1. 先尝试默认 PATH
     try {
       final r = await Process.run(
         'winget',
@@ -322,10 +328,69 @@ class HomeController extends GetxController {
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
       );
-      wingetInstalled.value = r.exitCode == 0;
-    } catch (_) {
-      wingetInstalled.value = false;
+      if (r.exitCode == 0) {
+        wingetInstalled.value = true;
+        return;
+      }
+    } catch (_) {}
+    // 2. 未在 PATH 中，尝试常见位置
+    final candidates = <String>[];
+    final localAppData = Platform.environment['LOCALAPPDATA'];
+    if (localAppData != null && localAppData.isNotEmpty) {
+      final windowsApps = '$localAppData${Platform.pathSeparator}Microsoft${Platform.pathSeparator}WindowsApps';
+      final wingetExe = '$windowsApps${Platform.pathSeparator}winget.exe';
+      if (await File(wingetExe).exists()) candidates.add(windowsApps);
     }
+    try {
+      final pf = Platform.environment['ProgramFiles'] ?? r'C:\Program Files';
+      final pfApps = '$pf${Platform.pathSeparator}WindowsApps';
+      if (await Directory(pfApps).exists()) {
+        await for (final e in Directory(pfApps).list()) {
+          if (e is Directory && e.path.contains('Microsoft.DesktopAppInstaller')) {
+            final w = File('${e.path}${Platform.pathSeparator}winget.exe');
+            if (await w.exists()) {
+              candidates.add(e.path);
+              break;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    for (final dir in candidates) {
+      final env = _envWithPathPrepend(dir);
+      try {
+        final r = await Process.run(
+          'winget',
+          ['--version'],
+          runInShell: true,
+          environment: env,
+          stdoutEncoding: utf8,
+          stderrEncoding: utf8,
+        );
+        if (r.exitCode == 0) {
+          _wingetDirForPath = dir;
+          wingetInstalled.value = true;
+          return;
+        }
+      } catch (_) {}
+    }
+    wingetInstalled.value = false;
+  }
+
+  /// 返回带 winget 目录的 PATH 的环境变量（供子进程调用 winget）
+  Map<String, String> _envForWinget() {
+    if (_wingetDirForPath != null) {
+      return _envWithPathPrepend(_wingetDirForPath!);
+    }
+    return Map.from(Platform.environment);
+  }
+
+  Map<String, String> _envWithPathPrepend(String prependDir) {
+    final env = Map<String, String>.from(Platform.environment);
+    final sep = Platform.pathSeparator;
+    final oldPath = env['PATH'] ?? '';
+    env['PATH'] = '$prependDir$sep$oldPath';
+    return env;
   }
 
   /// 检测 NVIDIA 驱动是否已安装（GPU 训练需先装驱动，再装 CUDA Toolkit）
@@ -539,6 +604,7 @@ class HomeController extends GetxController {
           '--accept-source-agreements',
         ],
         runInShell: true,
+        environment: _envForWinget(),
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
       );
@@ -773,6 +839,7 @@ class HomeController extends GetxController {
           '--accept-source-agreements',
         ],
         runInShell: true,
+        environment: _envForWinget(),
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
       );
@@ -1436,6 +1503,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           '--accept-source-agreements',
         ],
         runInShell: true,
+        environment: _envForWinget(),
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
       );
@@ -1529,6 +1597,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           '--accept-source-agreements',
         ],
         runInShell: true,
+        environment: _envForWinget(),
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
       );
@@ -1796,6 +1865,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
               '--add Microsoft.VisualStudio.Component.Windows11SDK.22621',
         ],
         runInShell: true,
+        environment: _envForWinget(),
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
       );
