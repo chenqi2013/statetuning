@@ -108,6 +108,7 @@ class HomeController extends GetxController {
     'torch',
     'transformers',
     'tqdm',
+
     'huggingface_hub',
     'ninja',
     'einops',
@@ -229,7 +230,6 @@ class HomeController extends GetxController {
     detectWinget();
     detectNvidiaDriver();
     detectUv();
-    _detectGpu();
     detectCudaHome();
     detectPython();
     // 启动时静默检测一次环境
@@ -498,7 +498,16 @@ class HomeController extends GetxController {
           '  安装过程可能需 5–15 分钟，请耐心等待\n\n';
       final result = await Process.run(
         'winget',
-        ['install', '-e', '--id', 'Nvidia.CUDA', '--version', '12.8', '--accept-package-agreements', '--accept-source-agreements'],
+        [
+          'install',
+          '-e',
+          '--id',
+          'Nvidia.CUDA',
+          '--version',
+          '12.8',
+          '--accept-package-agreements',
+          '--accept-source-agreements',
+        ],
         runInShell: true,
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
@@ -507,10 +516,9 @@ class HomeController extends GetxController {
       final err = (result.stderr as String).trim();
       if (out.isNotEmpty) cudaInstallLog.value += '$out\n';
       if (err.isNotEmpty) cudaInstallLog.value += '$err\n';
-      cudaInstallLog.value +=
-          result.exitCode == 0
-              ? '\n✓ CUDA 12.8 安装完成！请点击「自动检测」刷新路径，或重启应用。'
-              : '\n✗ 安装失败 (exit: ${result.exitCode})，可尝试从 NVIDIA 官网手动下载安装。';
+      cudaInstallLog.value += result.exitCode == 0
+          ? '\n✓ CUDA 12.8 安装完成！请点击「自动检测」刷新路径，或重启应用。'
+          : '\n✗ 安装失败 (exit: ${result.exitCode})，可尝试从 NVIDIA 官网手动下载安装。';
       if (result.exitCode == 0) {
         await detectCudaHome();
         Get.snackbar(
@@ -606,8 +614,8 @@ class HomeController extends GetxController {
       }
       final parts = (result.stdout as String).trim().split(',');
       if (parts.length < 3) return;
-      final detectedEmbd   = int.tryParse(parts[0]) ?? -1;
-      final detectedVocab  = int.tryParse(parts[1]) ?? -1;
+      final detectedEmbd = int.tryParse(parts[0]) ?? -1;
+      final detectedVocab = int.tryParse(parts[1]) ?? -1;
       final detectedLayers = int.tryParse(parts[2]) ?? -1;
       if (detectedEmbd > 0) {
         nEmbd.value = detectedEmbd;
@@ -726,7 +734,14 @@ class HomeController extends GetxController {
           '  系统会弹出 UAC 权限提示，请点击「是」\n\n';
       final result = await Process.run(
         'winget',
-        ['install', '-e', '--id', 'Git.Git', '--accept-package-agreements', '--accept-source-agreements'],
+        [
+          'install',
+          '-e',
+          '--id',
+          'Git.Git',
+          '--accept-package-agreements',
+          '--accept-source-agreements',
+        ],
         runInShell: true,
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
@@ -735,10 +750,9 @@ class HomeController extends GetxController {
       final err = (result.stderr as String).trim();
       if (out.isNotEmpty) gitInstallLog.value += '$out\n';
       if (err.isNotEmpty) gitInstallLog.value += '$err\n';
-      gitInstallLog.value +=
-          result.exitCode == 0
-              ? '\n✓ Git 安装完成！请点击「检测 Git」或重启应用。'
-              : '\n✗ 安装失败 (exit: ${result.exitCode})，可从 https://git-scm.com 手动下载安装。';
+      gitInstallLog.value += result.exitCode == 0
+          ? '\n✓ Git 安装完成！请点击「检测 Git」或重启应用。'
+          : '\n✗ 安装失败 (exit: ${result.exitCode})，可从 https://git-scm.com 手动下载安装。';
       if (result.exitCode == 0) {
         await detectGit();
         Get.snackbar(
@@ -785,7 +799,10 @@ class HomeController extends GetxController {
 
   /// 将内置 zip 解压到指定路径（供 _ensureRepoExtracted 和 initRepoFromBundle 复用）
   /// [managedByCaller] 为 true 时由调用方管理 isCloningRepo，内部不再设置
-  Future<void> _extractZipToPath(String targetPath, {bool managedByCaller = false}) async {
+  Future<void> _extractZipToPath(
+    String targetPath, {
+    bool managedByCaller = false,
+  }) async {
     if (!managedByCaller && isCloningRepo.value) return;
     if (!managedByCaller) isCloningRepo.value = true;
     repoCloned.value = false;
@@ -794,7 +811,10 @@ class HomeController extends GetxController {
       final dir = Directory(targetPath);
       if (!await dir.exists()) await dir.create(recursive: true);
       final data = await rootBundle.load('assets/statetuning_repo.zip');
-      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      final bytes = data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      );
       final archive = ZipDecoder().decodeBytes(bytes);
       final sep = Platform.pathSeparator;
       final base = targetPath.endsWith(sep) ? targetPath : '$targetPath$sep';
@@ -807,7 +827,9 @@ class HomeController extends GetxController {
           await outFile.writeAsBytes(file.content as List<int>);
           repoLog.value += '  ✓ $name\n';
         } else {
-          final relPath = name.replaceAll('/', sep).replaceAll(RegExp(r'/$'), '');
+          final relPath = name
+              .replaceAll('/', sep)
+              .replaceAll(RegExp(r'/$'), '');
           if (relPath.isEmpty) continue;
           final outDir = Directory('$base$relPath');
           await outDir.create(recursive: true);
@@ -868,6 +890,20 @@ if _cuda_home:
     print(f"[BUILD] CUDA_HOME = {_cuda_home}")
 else:
     print("[BUILD] WARNING: CUDA_HOME not found, CUDA kernel compilation may fail")
+
+# ── Windows: 将 torch/lib 和 CUDA/bin 加入 DLL 搜索路径 ──────────────────
+# JIT 编译的 .pyd 加载时需能找到 torch_cuda.dll、cudart64_*.dll 等
+if os.name == "nt":
+    _repo = r"${repoPath.value}"
+    _torch_lib = os.path.join(_repo, "python_venv", "Lib", "site-packages", "torch", "lib")
+    if os.path.isdir(_torch_lib):
+        os.add_dll_directory(_torch_lib)
+        print(f"[BUILD] add_dll_directory: {_torch_lib}")
+    if _cuda_home:
+        _cuda_bin = os.path.join(_cuda_home, "bin")
+        if os.path.isdir(_cuda_bin):
+            os.add_dll_directory(_cuda_bin)
+            print(f"[BUILD] add_dll_directory: {_cuda_bin}")
 
 # ── MSVC 环境完整初始化 ───────────────────────────────────────────
 # 仅把 cl.exe 加入 PATH 不够；必须运行 vcvarsall.bat x64 才能设置
@@ -1151,10 +1187,25 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       trainingLog.value = _buildLogDisplay();
 
       final py = _venvPythonPath ?? 'python';
+      // 启动训练时注入 PATH：torch/lib 含 CUDA 等 DLL，JIT 编译的 .pyd 加载时需要
+      final env = Map<String, String>.from(Platform.environment);
+      if (_venvPythonPath != null && repoPath.value.isNotEmpty) {
+        final torchLib =
+            '${repoPath.value}${Platform.pathSeparator}python_venv'
+            '${Platform.pathSeparator}Lib${Platform.pathSeparator}site-packages'
+            '${Platform.pathSeparator}torch${Platform.pathSeparator}lib';
+        final sep = Platform.pathSeparator;
+        env['PATH'] = '$torchLib$sep${env['PATH'] ?? ''}';
+        if (cudaHome.value.isNotEmpty) {
+          final cudaBin = '${cudaHome.value}${Platform.pathSeparator}bin';
+          env['PATH'] = '$cudaBin$sep${env['PATH']}';
+        }
+      }
       _trainingProcess = await Process.start(
         py,
         ['-u', '-X', 'utf8', '_flutter_train.py'],
         workingDirectory: repoPath.value,
+        environment: env,
         runInShell: true,
       );
 
@@ -1170,6 +1221,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         _appendLogData(data);
         _parseLoss(data);
       }
+
       _trainingProcess!.stdout.transform(dec.decoder).listen(onData);
       _trainingProcess!.stderr.transform(dec.decoder).listen(onData);
 
@@ -1267,10 +1319,12 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     _logFlushTimer = null;
     if (_trainingProcess != null) {
       final pid = _trainingProcess!.pid;
-      await Process.run(
-        'taskkill', ['/F', '/T', '/PID', '$pid'],
-        runInShell: true,
-      );
+      await Process.run('taskkill', [
+        '/F',
+        '/T',
+        '/PID',
+        '$pid',
+      ], runInShell: true);
       _trainingProcess = null;
     }
     _appendLogData('\n⏹ 训练已手动停止\n');
@@ -1301,7 +1355,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   /// 项目内 venv 的 Python 路径（repoPath/python_venv/Scripts/python.exe）
   String? get _venvPythonPath {
     if (repoPath.value.isEmpty) return null;
-    final p = '${repoPath.value}${Platform.pathSeparator}python_venv'
+    final p =
+        '${repoPath.value}${Platform.pathSeparator}python_venv'
         '${Platform.pathSeparator}Scripts${Platform.pathSeparator}python.exe';
     return p;
   }
@@ -1342,7 +1397,14 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           '  系统会弹出 UAC 权限提示，请点击「是」\n\n';
       final result = await Process.run(
         'winget',
-        ['install', '--id', 'astral-sh.uv', '-e', '--accept-package-agreements', '--accept-source-agreements'],
+        [
+          'install',
+          '--id',
+          'astral-sh.uv',
+          '-e',
+          '--accept-package-agreements',
+          '--accept-source-agreements',
+        ],
         runInShell: true,
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
@@ -1351,13 +1413,16 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       final err = (result.stderr as String).trim();
       if (out.isNotEmpty) uvInstallLog.value += '$out\n';
       if (err.isNotEmpty) uvInstallLog.value += '$err\n';
-      uvInstallLog.value +=
-          result.exitCode == 0
-              ? '\n✓ UV 安装完成！请重启应用。'
-              : '\n✗ 安装失败 (exit: ${result.exitCode})';
+      uvInstallLog.value += result.exitCode == 0
+          ? '\n✓ UV 安装完成！请重启应用。'
+          : '\n✗ 安装失败 (exit: ${result.exitCode})';
       if (result.exitCode == 0) {
         await detectUv();
-        Get.snackbar('安装完成', 'UV 已安装，请重启应用', duration: const Duration(seconds: 5));
+        Get.snackbar(
+          '安装完成',
+          'UV 已安装，请重启应用',
+          duration: const Duration(seconds: 5),
+        );
         return true;
       }
       return false;
@@ -1425,7 +1490,14 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           '  安装完成后请重启本应用，以便识别新安装的 Python\n\n';
       final result = await Process.run(
         'winget',
-        ['install', '-e', '--id', 'Python.Python.3.12', '--accept-package-agreements', '--accept-source-agreements'],
+        [
+          'install',
+          '-e',
+          '--id',
+          'Python.Python.3.12',
+          '--accept-package-agreements',
+          '--accept-source-agreements',
+        ],
         runInShell: true,
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
@@ -1434,10 +1506,9 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       final err = (result.stderr as String).trim();
       if (out.isNotEmpty) pythonInstallLog.value += '$out\n';
       if (err.isNotEmpty) pythonInstallLog.value += '$err\n';
-      pythonInstallLog.value +=
-          result.exitCode == 0
-              ? '\n✓ Python 3.12 安装完成！\n  请关闭并重新打开本应用，然后点击「一键安装」安装依赖包。'
-              : '\n✗ 安装失败 (exit: ${result.exitCode})，可从 https://www.python.org 手动下载安装。';
+      pythonInstallLog.value += result.exitCode == 0
+          ? '\n✓ Python 3.12 安装完成！\n  请关闭并重新打开本应用，然后点击「一键安装」安装依赖包。'
+          : '\n✗ 安装失败 (exit: ${result.exitCode})，可从 https://www.python.org 手动下载安装。';
       if (result.exitCode == 0) {
         await detectPython();
         Get.snackbar(
@@ -1482,7 +1553,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
       // ── 2. 创建/确认 venv ───────────────────────────────────────
       final venvDir = '${repoPath.value}${Platform.pathSeparator}python_venv';
-      final venvPy = '$venvDir${Platform.pathSeparator}Scripts${Platform.pathSeparator}python.exe';
+      final venvPy =
+          '$venvDir${Platform.pathSeparator}Scripts${Platform.pathSeparator}python.exe';
       if (!await File(venvPy).exists()) {
         installLog.value += '▶ 创建虚拟环境 python_venv（Python 3.12）...\n';
         final venvResult = await Process.run(
@@ -1504,37 +1576,84 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       }
 
       // ── 3. 安装依赖包（使用 uv pip，目标 venv）──────────────────
-      final torchWheelTag = _getCudaWheelTag();
+      const torchWheelTag = 'cu130';
       final torchIndexUrl = 'https://download.pytorch.org/whl/$torchWheelTag';
       installLog.value += '▶ 将安装 GPU (CUDA) torch，tag: $torchWheelTag\n\n';
 
+      final venvPython = './python_venv/Scripts/python.exe';
       final failed = <String>[];
+
       for (final pkg in _envPackages) {
         installLog.value += '─' * 50 + '\n';
         installLog.value += '▶ 安装 $pkg ...\n';
 
-        final args = ['pip', 'install', '--python', './python_venv/Scripts/python.exe', pkg];
         if (pkg.startsWith('torch')) {
-          args.addAll(['--index-url', torchIndexUrl]);
           installLog.value += '  从 PyTorch GPU 源下载（约 1–2 GB）...\n';
-        }
+          // 优先用 UV --torch-backend（UV 0.5.3+），可正确解析依赖；若失败则回退到 venv 的 pip
+          var result = await Process.run(
+            'uv',
+            [
+              'pip',
+              'install',
+              '--python',
+              venvPython,
+              pkg,
+              '--torch-backend',
+              torchWheelTag,
+            ],
+            workingDirectory: repoPath.value,
+            runInShell: true,
+            stdoutEncoding: utf8,
+            stderrEncoding: utf8,
+          );
+          if (result.stdout.toString().isNotEmpty)
+            installLog.value += '${result.stdout}';
+          if (result.stderr.toString().isNotEmpty)
+            installLog.value += '${result.stderr}';
 
-        final result = await Process.run(
-          'uv',
-          args,
-          workingDirectory: repoPath.value,
-          runInShell: true,
-          stdoutEncoding: utf8,
-          stderrEncoding: utf8,
-        );
-        if (result.stdout.toString().isNotEmpty) installLog.value += '${result.stdout}';
-        if (result.stderr.toString().isNotEmpty) installLog.value += '${result.stderr}';
+          if (result.exitCode != 0) {
+            installLog.value += '\n  UV 安装 torch 失败，尝试使用 pip 回退...\n';
+            // pip + --index-url：必须用主索引才能确保安装 cu130，否则会从 PyPI 装到 CPU 版
+            result = await Process.run(
+              venvPython,
+              ['-m', 'pip', 'install', pkg, '--index-url', torchIndexUrl],
+              workingDirectory: repoPath.value,
+              runInShell: true,
+              stdoutEncoding: utf8,
+              stderrEncoding: utf8,
+            );
+            if (result.stdout.toString().isNotEmpty)
+              installLog.value += '${result.stdout}';
+            if (result.stderr.toString().isNotEmpty)
+              installLog.value += '${result.stderr}';
+          }
 
-        if (result.exitCode == 0) {
-          installLog.value += '✓ $pkg 安装成功\n\n';
+          if (result.exitCode == 0) {
+            installLog.value += '✓ $pkg 安装成功\n\n';
+          } else {
+            failed.add(pkg);
+            installLog.value += '\n✗ $pkg 安装失败 (exit: ${result.exitCode})\n\n';
+          }
         } else {
-          failed.add(pkg);
-          installLog.value += '\n✗ $pkg 安装失败 (exit: ${result.exitCode})\n\n';
+          final result = await Process.run(
+            'uv',
+            ['pip', 'install', '--python', venvPython, pkg],
+            workingDirectory: repoPath.value,
+            runInShell: true,
+            stdoutEncoding: utf8,
+            stderrEncoding: utf8,
+          );
+          if (result.stdout.toString().isNotEmpty)
+            installLog.value += '${result.stdout}';
+          if (result.stderr.toString().isNotEmpty)
+            installLog.value += '${result.stderr}';
+
+          if (result.exitCode == 0) {
+            installLog.value += '✓ $pkg 安装成功\n\n';
+          } else {
+            failed.add(pkg);
+            installLog.value += '\n✗ $pkg 安装失败 (exit: ${result.exitCode})\n\n';
+          }
         }
       }
 
@@ -1587,7 +1706,13 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       final ninjaResult = await Process.run(
         useUv ? 'uv' : 'pip',
         useUv
-            ? ['pip', 'install', '--python', './python_venv/Scripts/python.exe', 'ninja']
+            ? [
+                'pip',
+                'install',
+                '--python',
+                './python_venv/Scripts/python.exe',
+                'ninja',
+              ]
             : ['install', 'ninja', '--no-warn-script-location'],
         workingDirectory: useUv ? repoPath.value : null,
         runInShell: true,
@@ -1690,7 +1815,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       await detectPython();
       final py = _venvPythonPath ?? 'python';
       if (!pythonInstalled.value) {
-        checkLog.value += '✗ 未找到可用 Python\n'
+        checkLog.value +=
+            '✗ 未找到可用 Python\n'
             '  请点击「一键安装」安装 UV 并创建项目虚拟环境\n\n';
       } else {
         checkLog.value +=
@@ -1713,7 +1839,10 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         // UV venv 默认无 pip，用 uv pip show 检测；系统 Python 用 python -m pip show
         final useUvCheck = _venvPythonPath != null && uvInstalled.value;
         for (final pkg in _envCheckPackages) {
-          final pkgName = pkg.replaceAll('_', '-'); // huggingface_hub -> huggingface-hub
+          final pkgName = pkg.replaceAll(
+            '_',
+            '-',
+          ); // huggingface_hub -> huggingface-hub
           final ProcessResult result;
           if (useUvCheck) {
             result = await Process.run(
@@ -1753,6 +1882,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
                   'print(f"cuda_available={avail}  cuda_version={ver}"); '
                   'exit(0 if avail else 1)',
             ],
+            workingDirectory: repoPath.value.isNotEmpty ? repoPath.value : null,
             runInShell: true,
             stdoutEncoding: utf8,
             stderrEncoding: utf8,
@@ -1763,8 +1893,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             checkLog.value += '✓ torch GPU (CUDA) 版本正常  [$cudaOut]\n';
           } else {
             checkLog.value +=
-                '✗ torch 未检测到 CUDA GPU 支持（当前为 CPU 版本）\n'
-                '  请点击「一键安装」重新安装 GPU 版本 torch\n';
+                '✗ torch 未检测到 CUDA GPU 支持\n'
+                '  请更新 NVIDIA 显卡驱动至最新版本，或使用支持 CUDA 13.0 的驱动\n';
             if (cudaOut.isNotEmpty) checkLog.value += '  详情: $cudaOut\n';
             missing.add('torch(CUDA)');
           }
@@ -1772,6 +1902,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
         if (missing.isEmpty) {
           envReady.value = true;
+          _detectGpu();
           checkLog.value += '\n所有环境已经准备好';
           Get.snackbar('环境检测', '所有环境已准备好', snackPosition: SnackPosition.TOP);
         } else {
@@ -1779,7 +1910,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           if (!torchHasCuda && missing.contains('torch(CUDA)')) {
             Get.snackbar(
               '环境检测',
-              'torch 未启用 CUDA，请点击「一键安装」安装 GPU 版本',
+              'torch 未启用 CUDA，请更新 NVIDIA 显卡驱动至最新版本',
               snackPosition: SnackPosition.TOP,
               duration: const Duration(seconds: 5),
             );

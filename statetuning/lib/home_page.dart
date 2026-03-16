@@ -97,21 +97,24 @@ class HomePage extends GetView<HomeController> {
               fontWeight: FontWeight.w600,
             ),
           ),
-          Row(
-            children: [
-              Obx(() => _chip(Icons.memory, 'GPU: ${controller.gpuInfo.value}')),
-              const SizedBox(width: 16),
-              Obx(() => _chip(
-                    controller.isTraining.value
-                        ? Icons.play_arrow
-                        : Icons.circle,
-                    controller.status.value,
-                    color: controller.isTraining.value
-                        ? const Color(0xFF22C55E)
-                        : const Color(0xFFB0B5BC),
-                  )),
-            ],
-          ),
+          Obx(() {
+            if (!controller.envReady.value) return const SizedBox.shrink();
+            return Row(
+              children: [
+                _chip(Icons.memory, 'GPU: ${controller.gpuInfo.value}'),
+                const SizedBox(width: 16),
+                _chip(
+                  controller.isTraining.value
+                      ? Icons.play_arrow
+                      : Icons.circle,
+                  controller.status.value,
+                  color: controller.isTraining.value
+                      ? const Color(0xFF22C55E)
+                      : const Color(0xFFB0B5BC),
+                ),
+              ],
+            );
+          }),
         ],
       ),
     );
