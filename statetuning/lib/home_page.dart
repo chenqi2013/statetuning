@@ -228,7 +228,7 @@ class HomePage extends GetView<HomeController> {
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
-                      color: selected ? const Color(0xFFEAB308) : Colors.transparent,
+                      color: selected ? const Color(0xFF3B82F6) : Colors.transparent,
                       width: 2,
                     ),
                   ),
@@ -931,9 +931,9 @@ class HomePage extends GetView<HomeController> {
                       Expanded(
                         child: SliderTheme(
                           data: SliderThemeData(
-                            activeTrackColor: const Color(0xFFEAB308),
+                            activeTrackColor: const Color(0xFF3B82F6),
                             inactiveTrackColor: const Color(0xFF3A3F47),
-                            thumbColor: const Color(0xFFEAB308),
+                            thumbColor: const Color(0xFF3B82F6),
                           ),
                           child: Slider(value: 0.7, onChanged: (_) {}),
                         ),
@@ -1007,7 +1007,7 @@ class HomePage extends GetView<HomeController> {
                         children: [
                           ElevatedButton(
                             onPressed: () {},
-                            style: _btnStyle(const Color(0xFFEAB308), compact: true),
+                            style: _btnStyle(const Color(0xFF3B82F6), compact: true),
                             child: const Text('全选'),
                           ),
                           const SizedBox(width: 8),
@@ -1093,7 +1093,7 @@ class HomePage extends GetView<HomeController> {
               onPressed: () => controller.setDistillationTabIndex(0),
               icon: const Icon(Icons.add, size: 18),
               label: const Text('去配置新建任务'),
-              style: _btnStyle(const Color(0xFFEAB308)),
+              style: _btnStyle(const Color(0xFF3B82F6)),
             ),
           ],
         ),
@@ -1330,7 +1330,7 @@ class HomePage extends GetView<HomeController> {
                         onPressed: () {},
                         icon: const Icon(Icons.auto_awesome, size: 18),
                         label: const Text('导出 RWKV 格式'),
-                        style: _btnStyle(const Color(0xFFEAB308), compact: true),
+                        style: _btnStyle(const Color(0xFF3B82F6), compact: true),
                       ),
                       const SizedBox(width: 10),
                       ElevatedButton.icon(
@@ -1398,7 +1398,7 @@ class HomePage extends GetView<HomeController> {
                     onPressed: () {},
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('新建生成器'),
-                    style: _btnStyle(const Color(0xFFEAB308)),
+                    style: _btnStyle(const Color(0xFF3B82F6)),
                   ),
                   const SizedBox(height: 20),
                   Container(
@@ -1461,7 +1461,7 @@ class HomePage extends GetView<HomeController> {
                     onPressed: () {},
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('新增服务商'),
-                    style: _btnStyle(const Color(0xFFEAB308)),
+                    style: _btnStyle(const Color(0xFF3B82F6)),
                   ),
                 ],
               ),
@@ -1491,7 +1491,7 @@ class HomePage extends GetView<HomeController> {
                       onPressed: () {},
                       icon: const Icon(Icons.save, size: 18),
                       label: const Text('保存配置'),
-                      style: _btnStyle(const Color(0xFFEAB308)),
+                      style: _btnStyle(const Color(0xFF3B82F6)),
                     ),
                   ),
                 ],
@@ -1525,7 +1525,7 @@ class HomePage extends GetView<HomeController> {
         children: [
           Row(
             children: [
-              Icon(icon, color: const Color(0xFFEAB308), size: 22),
+              Icon(icon, color: const Color(0xFF3B82F6), size: 22),
               const SizedBox(width: 10),
               Text(
                 title,
@@ -1575,10 +1575,10 @@ class HomePage extends GetView<HomeController> {
           width: 18,
           height: 18,
           decoration: BoxDecoration(
-            color: value ? const Color(0xFFEAB308) : Colors.transparent,
+            color: value ? const Color(0xFF3B82F6) : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
             border: Border.all(
-                color: value ? const Color(0xFFEAB308) : const Color(0xFF6B7280)),
+                color: value ? const Color(0xFF3B82F6) : const Color(0xFF6B7280)),
           ),
           child: value
               ? const Icon(Icons.check, color: Colors.black, size: 14)
