@@ -1,4 +1,3 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -11,62 +10,103 @@ class HomePage extends GetView<HomeController> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1D21),
-      body: Stack(
+      body: Column(
         children: [
-          Column(
-            children: [
-              _buildTopBar(),
-              _buildTabBar(),
-              Expanded(
-                child: Obx(() {
-                  switch (controller.currentTabIndex.value) {
-                    case 1:
-                      return _buildDataTab();
-                    case 2:
-                      return _buildTrainTab();
-                    case 3:
-                      return _buildMonitorTab(context);
-                    case 4:
-                      return _buildExportTab();
-                    case 5:
-                      return _buildSettingsTab();
-                    default:
-                      return _buildModelTab();
-                  }
-                }),
-              ),
-            ],
-          ),
-          Obx(() {
-            if (!controller.isCloningRepo.value) return const SizedBox.shrink();
-            return Container(
-              color: Colors.black54,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        color: Colors.white,
+          _buildTopBar(),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildSidebar(),
+                Expanded(
+                  child: Column(
+                    children: [
+                      _buildTabBar(),
+                      Expanded(
+                        child: Obx(() => _buildContent()),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      '正在初始化仓库...',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            );
-          }),
+              ],
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (controller.sidebarIndex.value == 1) {
+      return _buildDistillationContent();
+    }
+    switch (controller.currentTabIndex.value) {
+      case 1:
+        return _buildDataTab();
+      case 2:
+        return _buildTrainTab();
+      case 3:
+        return _buildMonitorTab();
+      case 4:
+        return _buildExportTab();
+      case 5:
+        return _buildSettingsTab();
+      default:
+        return _buildModelTab();
+    }
+  }
+
+  Widget _buildSidebar() {
+    return Obx(() {
+      final sel = controller.sidebarIndex.value;
+      return Container(
+        width: 72,
+        color: const Color(0xFF1E2228),
+        child: Column(
+          children: [
+            _sidebarItem(Icons.fitness_center, '训练', 0, sel),
+            _sidebarItem(Icons.science, '蒸馏', 1, sel),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _sidebarItem(IconData icon, String label, int index, int selected) {
+    final isSelected = index == selected;
+    return GestureDetector(
+      onTap: () => controller.setSidebarIndex(index),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF252830) : Colors.transparent,
+          border: Border(
+            left: BorderSide(
+              color: isSelected ? const Color(0xFF3B82F6) : Colors.transparent,
+              width: 3,
+            ),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 26,
+              color: isSelected ? const Color(0xFF3B82F6) : const Color(0xFF6B7280),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: isSelected ? Colors.white : const Color(0xFF6B7280),
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -97,24 +137,21 @@ class HomePage extends GetView<HomeController> {
               fontWeight: FontWeight.w600,
             ),
           ),
-          Obx(() {
-            if (!controller.envReady.value) return const SizedBox.shrink();
-            return Row(
-              children: [
-                _chip(Icons.memory, 'GPU: ${controller.gpuInfo.value}'),
-                const SizedBox(width: 16),
-                _chip(
-                  controller.isTraining.value
-                      ? Icons.play_arrow
-                      : Icons.circle,
-                  controller.status.value,
-                  color: controller.isTraining.value
-                      ? const Color(0xFF22C55E)
-                      : const Color(0xFFB0B5BC),
-                ),
-              ],
-            );
-          }),
+          Row(
+            children: [
+              Obx(() => _chip(Icons.memory, 'GPU: ${controller.gpuInfo.value}')),
+              const SizedBox(width: 16),
+              Obx(() => _chip(
+                    controller.isTraining.value
+                        ? Icons.play_arrow
+                        : Icons.circle,
+                    controller.status.value,
+                    color: controller.isTraining.value
+                        ? const Color(0xFF22C55E)
+                        : const Color(0xFFB0B5BC),
+                  )),
+            ],
+          ),
         ],
       ),
     );
@@ -133,49 +170,102 @@ class HomePage extends GetView<HomeController> {
 
   // ─── Tab Bar ─────────────────────────────────────────────────────────────────
 
-  /// 内容索引 -> 标签。0=模型 1=数据 2=训练 3=监控 4=导出 5=设置
-  static const _tabLabels = ['模型', '数据', '训练', '监控', '导出', '设置'];
-
-  /// 环境未就绪时设置放第一位，就绪后放最后
-  List<int> _tabOrder() =>
-      controller.envReady.value ? [0, 1, 2, 3, 4, 5] : [5, 0, 1, 2, 3, 4];
-
   Widget _buildTabBar() {
-    return Obx(
-      () {
-        final order = _tabOrder();
-        return Container(
-          color: const Color(0xFF1A1D21),
-          child: Row(
-            children: order.map((contentIndex) {
-              final selected = controller.currentTabIndex.value == contentIndex;
-              return GestureDetector(
-                onTap: () => controller.setTabIndex(contentIndex),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: selected ? const Color(0xFF3B82F6) : Colors.transparent,
-                        width: 2,
-                      ),
-                    ),
+    return Obx(() {
+      if (controller.sidebarIndex.value == 1) {
+        return _buildDistillationTabBar();
+      }
+      return _buildTrainingTabBar();
+    });
+  }
+
+  Widget _buildTrainingTabBar() {
+    const tabs = ['模型', '数据', '训练', '监控', '导出', '设置'];
+    return Container(
+      color: const Color(0xFF1A1D21),
+      child: Row(
+        children: List.generate(tabs.length, (i) {
+          final selected = controller.currentTabIndex.value == i;
+          return GestureDetector(
+            onTap: () => controller.setTabIndex(i),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: selected ? const Color(0xFF3B82F6) : Colors.transparent,
+                    width: 2,
                   ),
-                  child: Text(
-                    _tabLabels[contentIndex],
-                    style: TextStyle(
-                      color: selected ? Colors.white : const Color(0xFF6B7280),
-                      fontSize: 15,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+              child: Text(
+                tabs[i],
+                style: TextStyle(
+                  color: selected ? Colors.white : const Color(0xFF6B7280),
+                  fontSize: 15,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildDistillationTabBar() {
+    const tabs = ['创建任务', '任务队列', '实时监控', '数据统计', '数据导出', '生成器管理', 'LLM服务商'];
+    return Obx(
+      () => Container(
+        color: const Color(0xFF1A1D21),
+        child: Row(
+          children: List.generate(tabs.length, (i) {
+            final selected = controller.distillationTabIndex.value == i;
+            return GestureDetector(
+              onTap: () => controller.setDistillationTabIndex(i),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: selected ? const Color(0xFFEAB308) : Colors.transparent,
+                      width: 2,
                     ),
                   ),
                 ),
-              );
-            }).toList(),
-          ),
-        );
-      },
+                child: Text(
+                  tabs[i],
+                  style: TextStyle(
+                    color: selected ? Colors.white : const Color(0xFF6B7280),
+                    fontSize: 15,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
     );
+  }
+
+  Widget _buildDistillationContent() {
+    switch (controller.distillationTabIndex.value) {
+      case 1:
+        return _buildDistillationQueueTab();
+      case 2:
+        return _buildDistillationMonitorTab();
+      case 3:
+        return _buildDistillationStatsTab();
+      case 4:
+        return _buildDistillationExportTab();
+      case 5:
+        return _buildDistillationGeneratorTab();
+      case 6:
+        return _buildDistillationLLMTab();
+      default:
+        return _buildDistillationCreateTaskTab();
+    }
   }
 
   // ─── Tab 0: 模型 ─────────────────────────────────────────────────────────────
@@ -225,53 +315,62 @@ class HomePage extends GetView<HomeController> {
           const SizedBox(height: 20),
           _sectionCard(
             title: '模型文件路径',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _labeledField(
-                  '预训练模型 (.pth)',
-                  controller.modelPathController,
-                  hint: '选择或粘贴路径，自动读取模型尺寸',
-                  onBrowse: controller.pickModelFile,
-                  browseIcon: Icons.file_open,
-                ),
-                Obx(() {
-                  if (!controller.isDetectingModel.value) return const SizedBox.shrink();
-                  return const Padding(
-                    padding: EdgeInsets.only(top: 10),
-                    child: Row(children: [
-                      SizedBox(width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2)),
-                      SizedBox(width: 10),
-                      Text('正在读取模型尺寸...',
-                          style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
-                    ]),
-                  );
-                }),
-              ],
+            child: _labeledField(
+              '预训练模型 (.pth)',
+              controller.modelPathController,
+              hint: '点击右侧按钮选择文件',
+              onBrowse: controller.pickModelFile,
+              browseIcon: Icons.file_open,
             ),
           ),
           const SizedBox(height: 20),
           _sectionCard(
+            title: '训练精度',
+            child: Obx(() => Row(
+                  children: [
+                    _precisionButton('BF16', TrainingPrecision.bf16),
+                    const SizedBox(width: 12),
+                    _precisionButton('FP16', TrainingPrecision.fp16),
+                    const SizedBox(width: 12),
+                    _precisionButton('FP32', TrainingPrecision.fp32),
+                  ],
+                )),
+          ),
+          const SizedBox(height: 20),
+          _sectionCard(
             title: 'ModelArgs（高级）',
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  child: _labeledField('词表大小 (vocab_size)',
-                      controller.vocabSizeController,
-                      hint: '65536', keyboardType: TextInputType.number, readOnly: true),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _labeledField('词表大小 (vocab_size)',
+                          controller.vocabSizeController,
+                          hint: '65536', keyboardType: TextInputType.number),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _labeledField('上下文长度 (ctx_len)',
+                          controller.ctxLenController,
+                          hint: '512', keyboardType: TextInputType.number),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _labeledField('嵌入维度 (n_embd)',
-                      controller.nEmbdController,
-                      hint: '1024', keyboardType: TextInputType.number, readOnly: true),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _labeledField('层数 (n_layer)',
-                      controller.nLayerController,
-                      hint: '24', keyboardType: TextInputType.number, readOnly: true),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _labeledField('嵌入维度 (n_embd)',
+                          controller.nEmbdController,
+                          hint: '1024', keyboardType: TextInputType.number),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _labeledField('层数 (n_layer)',
+                          controller.nLayerController,
+                          hint: '24', keyboardType: TextInputType.number),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -325,48 +424,60 @@ class HomePage extends GetView<HomeController> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionCard(
-            title: '训练仓库',
+            title: '仓库来源 (github.com/Joluck/statetuning)',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  '首次进入已自动解压内置仓库到 exe 同目录，可直接使用。',
-                  style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.4),
-                ),
-                const SizedBox(height: 12),
-                _labeledField('仓库路径', controller.repoPathController,
-                    hint: '默认：exe 同目录 / statetuning_repo',
+                // 路径输入 + 浏览已有文件夹
+                _labeledField('本地仓库路径', controller.repoPathController,
+                    hint: '选择或填写仓库所在文件夹',
                     onBrowse: controller.pickRepoDir),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: controller.isCloningRepo.value ? null : controller.checkRepo,
-                      icon: const Icon(Icons.check_circle_outline, size: 18),
-                      label: const Text('检查路径'),
-                      style: _btnStyle(const Color(0xFF6B7280), compact: true),
-                    ),
-                    const SizedBox(width: 12),
-                    Obx(() {
-                      if (!controller.repoCloned.value &&
-                          controller.repoPath.value.isNotEmpty) {
-                        return TextButton.icon(
-                          onPressed: controller.isCloningRepo.value
-                              ? null
-                              : controller.initRepoFromBundle,
-                          icon: const Icon(Icons.folder_copy, size: 16),
-                          label: const Text('解压到此处'),
-                          style: TextButton.styleFrom(foregroundColor: const Color(0xFF6366F1)),
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    }),
-                  ],
+                const SizedBox(height: 4),
+                const Text(
+                  '选择文件夹后自动检测；或使用下方按钮获取仓库',
+                  style: TextStyle(color: Color(0xFF4B5563), fontSize: 12),
                 ),
+                const SizedBox(height: 14),
+                // 操作按钮
+                Obx(() {
+                  final busy = controller.isCloningRepo.value;
+                  return Row(
+                    children: [
+                      // 从 GitHub 克隆
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: busy ? null : controller.cloneRepo,
+                          icon: busy
+                              ? const SizedBox(
+                                  width: 16, height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.download, size: 18),
+                          label: Text(
+                              busy ? '克隆中...' : '从 GitHub 克隆',
+                              style: const TextStyle(fontSize: 13)),
+                          style: _btnStyle(const Color(0xFF6366F1)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // 检查路径
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: busy ? null : controller.checkRepo,
+                          icon: const Icon(Icons.check_circle_outline, size: 18),
+                          label: const Text('检查路径',
+                              style: TextStyle(fontSize: 13)),
+                          style: _btnStyle(const Color(0xFF6B7280)),
+                        ),
+                      ),
+                    ],
+                  );
+                }),
                 const SizedBox(height: 12),
                 Obx(() => _logBox(controller.repoLog.value,
-                    minHeight: 50,
-                    placeholder: '仓库状态显示在此')),
+                    minHeight: 60,
+                    placeholder: '选择文件夹 / 解压 ZIP / 克隆仓库后状态显示在此')),
               ],
             ),
           ),
@@ -380,34 +491,29 @@ class HomePage extends GetView<HomeController> {
                     onBrowse: controller.pickDataFile,
                     browseIcon: Icons.file_open),
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1D21),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFF3A3F47)),
-                    ),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('数据格式示例 (每行一个 JSON):',
-                            style: TextStyle(
-                                color: Color(0xFF6B7280), fontSize: 12)),
-                        SizedBox(height: 6),
-                        SelectableText(
-                          '{"text": "User: 你好\\n\\nAssistant: 你好！有什么可以帮助你的吗？\\n\\n"}\n'
-                          '{"text": "User: 讲个笑话\\n\\nAssistant: 好的...\\n\\n"}',
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1D21),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF3A3F47)),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('数据格式示例 (每行一个 JSON):',
                           style: TextStyle(
-                              color: Color(0xFF86EFAC),
-                              fontSize: 12,
-                              fontFamily: 'monospace'),
-                          textAlign: TextAlign.left,
-                        ),
-                      ],
-                    ),
+                              color: Color(0xFF6B7280), fontSize: 12)),
+                      SizedBox(height: 6),
+                      SelectableText(
+                        '{"text": "User: 你好\\n\\nAssistant: 你好！有什么可以帮助你的吗？\\n\\n"}\n'
+                        '{"text": "User: 讲个笑话\\n\\nAssistant: 好的...\\n\\n"}',
+                        style: TextStyle(
+                            color: Color(0xFF86EFAC),
+                            fontSize: 12,
+                            fontFamily: 'monospace'),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -473,37 +579,6 @@ class HomePage extends GetView<HomeController> {
                     Expanded(
                       child: _labeledField('学习率', controller.learningRateController,
                           hint: '1e-5'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _labeledField('上下文长度 (ctx_len)',
-                          controller.ctxLenController,
-                          hint: '512', keyboardType: TextInputType.number),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('训练精度',
-                              style: TextStyle(
-                                  color: Color(0xFF9CA3AF), fontSize: 13)),
-                          const SizedBox(height: 8),
-                          Obx(() => Row(
-                                children: [
-                                  _precisionButton('BF16', TrainingPrecision.bf16),
-                                  const SizedBox(width: 10),
-                                  _precisionButton('FP16', TrainingPrecision.fp16),
-                                  const SizedBox(width: 10),
-                                  _precisionButton('FP32', TrainingPrecision.fp32),
-                                ],
-                              )),
-                        ],
-                      ),
                     ),
                   ],
                 ),
@@ -616,7 +691,7 @@ class HomePage extends GetView<HomeController> {
 
   // ─── Tab 3: 监控 ─────────────────────────────────────────────────────────────
 
-  Widget _buildMonitorTab(BuildContext context) {
+  Widget _buildMonitorTab() {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -626,19 +701,6 @@ class HomePage extends GetView<HomeController> {
             children: [
               Obx(() => _statusBadge(controller.isTraining.value)),
               const Spacer(),
-              // 「查看Loss曲线」按钮：训练完成且有数据时显示
-              Obx(() {
-                if (controller.lossHistory.isEmpty) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showLossChart(context),
-                    icon: const Icon(Icons.show_chart, size: 18),
-                    label: const Text('查看Loss曲线'),
-                    style: _btnStyle(const Color(0xFF7C3AED), compact: true),
-                  ),
-                );
-              }),
               Obx(() {
                 if (!controller.isTraining.value) return const SizedBox.shrink();
                 return ElevatedButton.icon(
@@ -687,139 +749,6 @@ class HomePage extends GetView<HomeController> {
             }),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showLossChart(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: const Color(0xFF1A1D21),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding: const EdgeInsets.all(24),
-        child: SizedBox(
-          width: 700,
-          height: 460,
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.show_chart, color: Color(0xFF7C3AED), size: 22),
-                    const SizedBox(width: 10),
-                    const Text('Training Loss 曲线',
-                        style: TextStyle(color: Color(0xFFE2E8F0),
-                            fontSize: 16, fontWeight: FontWeight.w600)),
-                    const Spacer(),
-                    Obx(() => Text(
-                          '共 ${controller.lossHistory.length} 步',
-                          style: const TextStyle(
-                              color: Color(0xFF6B7280), fontSize: 13),
-                        )),
-                    const SizedBox(width: 16),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Color(0xFF6B7280)),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                Expanded(child: Obx(() => _buildLossChart(controller.lossHistory))),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLossChart(List<double> losses) {
-    if (losses.isEmpty) {
-      return const Center(
-          child: Text('暂无 Loss 数据', style: TextStyle(color: Color(0xFF6B7280))));
-    }
-
-    // 每隔 N 点采样，避免数据量太大时渲染卡顿
-    const maxPoints = 400;
-    final step = losses.length > maxPoints ? (losses.length / maxPoints).ceil() : 1;
-    final spots = <FlSpot>[];
-    for (var i = 0; i < losses.length; i += step) {
-      spots.add(FlSpot(i.toDouble(), losses[i]));
-    }
-
-    final minY = losses.reduce((a, b) => a < b ? a : b);
-    final maxY = losses.reduce((a, b) => a > b ? a : b);
-    final padY = (maxY - minY) * 0.1 + 0.05;
-
-    return LineChart(
-      LineChartData(
-        minY: minY - padY,
-        maxY: maxY + padY,
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            isCurved: true,
-            curveSmoothness: 0.3,
-            color: const Color(0xFF7C3AED),
-            barWidth: 2,
-            dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(
-              show: true,
-              color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
-            ),
-          ),
-        ],
-        gridData: FlGridData(
-          show: true,
-          getDrawingHorizontalLine: (_) =>
-              const FlLine(color: Color(0xFF2A2D35), strokeWidth: 1),
-          getDrawingVerticalLine: (_) =>
-              const FlLine(color: Color(0xFF2A2D35), strokeWidth: 1),
-        ),
-        borderData: FlBorderData(
-          show: true,
-          border: Border.all(color: const Color(0xFF3A3F47)),
-        ),
-        titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            axisNameWidget: const Text('Loss',
-                style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 48,
-              getTitlesWidget: (v, _) => Text(v.toStringAsFixed(2),
-                  style: const TextStyle(
-                      color: Color(0xFF6B7280), fontSize: 11)),
-            ),
-          ),
-          bottomTitles: AxisTitles(
-            axisNameWidget: const Text('Step',
-                style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 28,
-              getTitlesWidget: (v, _) => Text(v.toInt().toString(),
-                  style: const TextStyle(
-                      color: Color(0xFF6B7280), fontSize: 11)),
-            ),
-          ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (_) => const Color(0xFF252830),
-            getTooltipItems: (spots) => spots
-                .map((s) => LineTooltipItem(
-                      'Step ${s.x.toInt()}\nLoss: ${s.y.toStringAsFixed(4)}',
-                      const TextStyle(color: Color(0xFFE2E8F0), fontSize: 12),
-                    ))
-                .toList(),
-          ),
-        ),
       ),
     );
   }
@@ -899,7 +828,7 @@ class HomePage extends GetView<HomeController> {
                       ),
                       child: const Center(
                         child: Text(
-                          '暂无输出文件\n训练完成后，.state.pth 权重文件将显示在这里',
+                          '暂无输出文件\n训练完成后，.state 权重文件将显示在这里',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                               color: Color(0xFF4B5563), fontSize: 14),
@@ -918,10 +847,10 @@ class HomePage extends GetView<HomeController> {
           _sectionCard(
             title: '使用说明',
             child: const Text(
-              '训练完成后，State 权重文件 (.state.pth) 可加载到 RWKV 推理框架中。\n\n'
+              '训练完成后，State 权重文件 (.state) 可加载到 RWKV 推理框架中。\n\n'
               '• 与原始 .pth 模型权重分开存储，体积极小\n'
-              '• 只包含经过微调的 state 参数，pth 格式避免混淆\n'
-              '• 推理时合并使用: model.pth + xxx.state.pth',
+              '• 只包含经过微调的 state 参数\n'
+              '• 推理时合并使用: model.pth + xxx.state',
               style: TextStyle(
                 color: Color(0xFFB0B5BC),
                 fontSize: 13,
@@ -966,6 +895,702 @@ class HomePage extends GetView<HomeController> {
     );
   }
 
+  // ─── 蒸馏子页 ───────────────────────────────────────────────────────────────────
+
+  /// 创建任务 - 基本配置 + 语言比例分配 + 话题范围配置
+  Widget _buildDistillationCreateTaskTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 左：基本配置
+          Expanded(
+            flex: 1,
+            child: _distillCard(
+              icon: Icons.settings,
+              title: '基本配置',
+              compact: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _distillFormField('任务名称', '输入任务名称'),
+                  const SizedBox(height: 14),
+                  _distillFormField('生成器类型', '无工具对话'),
+                  const Text(
+                    '生成纯对话数据,无需工具调用',
+                    style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                  ),
+                  const SizedBox(height: 14),
+                  _distillFormField('生成数量', '100'),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      const Text('Temperature: 0.7',
+                          style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13)),
+                      Expanded(
+                        child: SliderTheme(
+                          data: SliderThemeData(
+                            activeTrackColor: const Color(0xFFEAB308),
+                            inactiveTrackColor: const Color(0xFF3A3F47),
+                            thumbColor: const Color(0xFFEAB308),
+                          ),
+                          child: Slider(value: 0.7, onChanged: (_) {}),
+                        ),
+                      ),
+                    ],
+                  ),
+                  _distillFormField('并发数 (线程数)', '4'),
+                  _distillFormField('API Key (可选)', '默认使用 sk-test'),
+                  _distillFormField('LLM 服务商(可选)', '-- 使用API Key 或默认--'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          // 右：语言比例 + 话题范围
+          Expanded(
+            flex: 1,
+            child: Column(
+              children: [
+                _distillCard(
+                  icon: Icons.language,
+                  title: '语言比例分配',
+                  compact: true,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '各语言比例总和必须等于100%',
+                        style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 10,
+                        children: [
+                          _langPercentItem('中文 (ZH)', 70),
+                          _langPercentItem('英文 (EN)', 15),
+                          _langPercentItem('日文 (JA)', 2),
+                          _langPercentItem('韩文 (KO)', 2),
+                          _langPercentItem('德文 (DE)', 3),
+                          _langPercentItem('法文 (FR)', 3),
+                          _langPercentItem('西班牙 (ES)', 3),
+                          _langPercentItem('俄文 (RU)', 2),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('总计: 100%',
+                          style: TextStyle(color: Color(0xFF22C55E), fontSize: 14)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                _distillCard(
+                  icon: Icons.category,
+                  title: '话题范围配置',
+                  compact: true,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '选择要包含的话题分类,留空则使用全部话题',
+                        style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13),
+                      ),
+                      const SizedBox(height: 12),
+                      const Center(
+                        child: Text('加载中...',
+                            style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          ElevatedButton(
+                            onPressed: () {},
+                            style: _btnStyle(const Color(0xFFEAB308), compact: true),
+                            child: const Text('全选'),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () {},
+                            style: _btnStyle(const Color(0xFF6B7280), compact: true),
+                            child: const Text('全不选'),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            onPressed: () {},
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('新增话题'),
+                            style: _btnStyle(const Color(0xFF22C55E), compact: true),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _langPercentItem(String label, int value) {
+    return SizedBox(
+      width: 90,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1D21),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFF3A3F47)),
+            ),
+            child: Text('$value', style: const TextStyle(color: Colors.white, fontSize: 14)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDistillationQueueTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: _distillCard(
+        icon: Icons.playlist_play,
+        title: '任务队列',
+        compact: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '待执行和运行中的蒸馏任务',
+              style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.5),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1D21),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF3A3F47)),
+              ),
+              child: const Center(
+                child: Text(
+                  '暂无任务\n请在「配置」中创建蒸馏任务',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Color(0xFF6B7280), fontSize: 14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () => controller.setDistillationTabIndex(0),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('去配置新建任务'),
+              style: _btnStyle(const Color(0xFFEAB308)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDistillationMonitorTab() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              SizedBox(
+                height: 200,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: _distillCard(
+                        icon: Icons.show_chart,
+                        title: '实时进度',
+                        compact: false,
+                        minHeight: 200,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              '0.0 条/分钟',
+                              style: TextStyle(color: Color(0xFFA78BFA), fontSize: 14),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'ETA: --:--:--',
+                              style: TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+                            ),
+                            const Spacer(),
+                            Container(
+                              height: 120,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1A1D21),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFF3A3F47)),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  '图表区域',
+                                  style: TextStyle(color: Color(0xFF4B5563), fontSize: 13),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      flex: 1,
+                      child: _distillCard(
+                        icon: Icons.people,
+                        title: '工作状态',
+                        compact: false,
+                        minHeight: 200,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              '暂无运行中的任务',
+                              style: TextStyle(color: Color(0xFF6B7280), fontSize: 14),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              '线程活跃度',
+                              style: TextStyle(
+                                  color: Color(0xFFB0B5BC),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500),
+                            ),
+                            const Spacer(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: _distillCard(
+                  icon: Icons.description,
+                  title: '实时日志',
+                  compact: false,
+                  minHeight: 150,
+                  child: LayoutBuilder(
+                    builder: (_, c) => SingleChildScrollView(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: c.maxHeight),
+                        child: const SelectableText(
+                          '系统就绪, 等待任务...',
+                          style: TextStyle(
+                              color: Color(0xFF6B7280),
+                              fontSize: 12,
+                              fontFamily: 'monospace'),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 数据统计 - 系统概览
+  Widget _buildDistillationStatsTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _distillCard(
+            icon: Icons.bar_chart,
+            title: '系统概览',
+            compact: true,
+            child: Row(
+              children: [
+                _statCard('总任务数', 0),
+                const SizedBox(width: 16),
+                _statCard('总记录数', 0),
+                const SizedBox(width: 16),
+                _statCard('运行中', 0),
+                const SizedBox(width: 16),
+                _statCard('已完成', 0),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(48),
+            decoration: BoxDecoration(
+              color: const Color(0xFF252830),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF3A3F47)),
+            ),
+            child: const Center(
+              child: Text(
+                '暂无数据,请先完成一些生成任务',
+                style: TextStyle(color: Color(0xFF6B7280), fontSize: 15),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statCard(String label, int value) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1D21),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF3A3F47)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+            const SizedBox(height: 8),
+            Text('$value', style: const TextStyle(color: Color(0xFF22C55E), fontSize: 24, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 数据导出 - RWKV 导出 + 导出历史
+  Widget _buildDistillationExportTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 1,
+            child: _distillCard(
+              icon: Icons.folder_open,
+              title: 'RWKV 导出',
+              compact: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '选择已完成的任务进行导出 (使用生成器对应的RWKV 模板)',
+                    style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.5),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(children: [_distillCheckbox('打乱顺序 (防止过拟合)', true)]),
+                  const SizedBox(height: 8),
+                  Row(children: [_distillCheckbox('按类型合并 (生成多个文件)', false)]),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1D21),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF3A3F47)),
+                    ),
+                    child: const Center(
+                      child: Text('暂无已完成的任务', style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.visibility, size: 18),
+                        label: const Text('预览'),
+                        style: _btnStyle(const Color(0xFF22C55E), compact: true),
+                      ),
+                      const SizedBox(width: 10),
+                      ElevatedButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.auto_awesome, size: 18),
+                        label: const Text('导出 RWKV 格式'),
+                        style: _btnStyle(const Color(0xFFEAB308), compact: true),
+                      ),
+                      const SizedBox(width: 10),
+                      ElevatedButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.square, size: 18),
+                        label: const Text('导出 BINIDX'),
+                        style: _btnStyle(const Color(0xFF22C55E), compact: true),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            flex: 1,
+            child: _distillCard(
+              icon: Icons.description,
+              title: '导出历史',
+              compact: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(32),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1D21),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF3A3F47)),
+                    ),
+                    child: const Center(
+                      child: Text('暂无导出记录', style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 生成器管理 - 生成器列表 + 生成器配置
+  Widget _buildDistillationGeneratorTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 1,
+            child: _distillCard(
+              icon: Icons.settings,
+              title: '生成器列表',
+              compact: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('管理可用的数据生成器', style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13)),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('新建生成器'),
+                    style: _btnStyle(const Color(0xFFEAB308)),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1D21),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF3A3F47)),
+                    ),
+                    child: const Center(
+                      child: Text('暂无生成器\n点击「新建生成器」添加', style: TextStyle(color: Color(0xFF6B7280), fontSize: 14), textAlign: TextAlign.center),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            flex: 1,
+            child: _distillCard(
+              icon: Icons.edit,
+              title: '生成器配置',
+              compact: true,
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(height: 20),
+                  Center(
+                    child: Text('从左侧选择一个生成器进行编辑', style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// LLM服务商 - 服务商列表 + 服务商配置
+  Widget _buildDistillationLLMTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 1,
+            child: _distillCard(
+              icon: Icons.psychology,
+              title: 'LLM 服务商配置',
+              compact: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('配置和管理 LLM 服务商', style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13)),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('新增服务商'),
+                    style: _btnStyle(const Color(0xFFEAB308)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            flex: 2,
+            child: _distillCard(
+              icon: Icons.edit,
+              title: '服务商配置',
+              compact: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _distillFormField('服务商名称', 'OpenRouter'),
+                  _distillFormField('服务商类型', '自定义'),
+                  _distillFormField('API Base URL', 'https://huoshan.com'),
+                  _distillFormField('API Key', '............'),
+                  _distillFormField('模型', 'huoshan'),
+                  _distillFormField('可用模型列表(可选,逗号分隔)', 'doubaov2.3'),
+                  _distillFormField('最大 Token 数', '4096'),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {},
+                      icon: const Icon(Icons.save, size: 18),
+                      label: const Text('保存配置'),
+                      style: _btnStyle(const Color(0xFFEAB308)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _distillCard({
+    required IconData icon,
+    required String title,
+    required Widget child,
+    bool compact = false,
+    double? minHeight,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      constraints: compact
+          ? (minHeight != null ? BoxConstraints(minHeight: minHeight) : null)
+          : BoxConstraints(minHeight: minHeight ?? 420),
+      decoration: BoxDecoration(
+        color: const Color(0xFF252830),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF3A3F47)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: const Color(0xFFEAB308), size: 22),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (compact) child else Expanded(child: child),
+        ],
+      ),
+    );
+  }
+
+  Widget _distillFormField(String label, String hint) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(color: Color(0xFFB0B5BC), fontSize: 13)),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1D21),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF3A3F47)),
+          ),
+          child: Text(
+            hint,
+            style: const TextStyle(color: Color(0xFF4B5563), fontSize: 13),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _distillCheckbox(String label, bool value) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(
+            color: value ? const Color(0xFFEAB308) : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+                color: value ? const Color(0xFFEAB308) : const Color(0xFF6B7280)),
+          ),
+          child: value
+              ? const Icon(Icons.check, color: Colors.black, size: 14)
+              : null,
+        ),
+        const SizedBox(width: 8),
+        Text(label,
+            style: const TextStyle(color: Color(0xFFB0B5BC), fontSize: 13)),
+      ],
+    );
+  }
+
   // ─── Tab 5: 设置 ─────────────────────────────────────────────────────────────
 
   Widget _buildSettingsTab() {
@@ -973,171 +1598,9 @@ class HomePage extends GetView<HomeController> {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          _buildSystemBaseCard(),
-          const SizedBox(height: 20),
           _buildCudaCard(),
           const SizedBox(height: 20),
           _buildEnvCard(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSystemBaseCard() {
-    return _sectionCard(
-      title: '系统基础（全新电脑必检）',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '以下为一键安装的先决条件，全新 Windows 请按顺序检查：',
-            style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.5),
-          ),
-          const SizedBox(height: 16),
-          Obx(() {
-            final winget = controller.wingetInstalled.value;
-            return _buildStatusRow(
-              'winget（应用安装程序）',
-              winget,
-              description: 'Git / Python / CUDA / MSVC 等一键安装均依赖 winget',
-              onRetry: controller.detectWinget,
-              whenMissing: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '全新系统可能未预装，请通过以下方式安装：',
-                    style: TextStyle(color: Color(0xFFFBBF24), fontSize: 12),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => controller.openUrl('https://aka.ms/getwinget'),
-                    icon: const Icon(Icons.open_in_new, size: 16),
-                    label: const Text('打开 winget 安装页'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF3B82F6),
-                      side: const BorderSide(color: Color(0xFF3B82F6)),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('或运行 PowerShell（以管理员身份）：',
-                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 11)),
-                  const SizedBox(height: 4),
-                  SelectableText(
-                    'Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe',
-                    style: const TextStyle(
-                      color: Color(0xFF86EFAC),
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                ],
-              ),
-            );
-              }),
-          const SizedBox(height: 16),
-          Obx(() {
-            final uv = controller.uvInstalled.value;
-            return _buildStatusRow(
-              'UV',
-              uv,
-              description: 'Python 虚拟环境工具，依赖安装到项目 python_venv 目录',
-              onRetry: controller.detectUv,
-              whenMissing: ElevatedButton.icon(
-                onPressed: controller.isUvInstalling.value ? null : controller.installUv,
-                icon: controller.isUvInstalling.value
-                    ? const SizedBox(width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.download, size: 18),
-                label: Text(controller.isUvInstalling.value ? '安装中...' : '一键安装 UV'),
-                style: _btnStyle(const Color(0xFF7C3AED), compact: true),
-              ),
-            );
-          }),
-          const SizedBox(height: 16),
-          Obx(() {
-            final nvidia = controller.nvidiaDriverInstalled.value;
-            return _buildStatusRow(
-              'NVIDIA 驱动',
-              nvidia,
-              description: 'GPU 训练需先装驱动，再装 CUDA Toolkit（无 NVIDIA 显卡可跳过）',
-              onRetry: controller.detectNvidiaDriver,
-              whenMissing: Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => controller.openUrl('https://www.nvidia.com/Download/index.aspx'),
-                    icon: const Icon(Icons.open_in_new, size: 16),
-                    label: const Text('前往 NVIDIA 官网下载驱动'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF3B82F6),
-                      side: const BorderSide(color: Color(0xFF3B82F6)),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusRow(
-    String label,
-    bool installed, {
-    required String description,
-    VoidCallback? onRetry,
-    Widget? whenMissing,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1D21),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: installed ? const Color(0xFF22C55E) : const Color(0xFF3A3F47),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                installed ? Icons.check_circle : Icons.warning_amber_rounded,
-                color: installed ? const Color(0xFF22C55E) : const Color(0xFFFBBF24),
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: installed ? const Color(0xFF22C55E) : Colors.white,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              if (onRetry != null) ...[
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: onRetry,
-                  icon: const Icon(Icons.refresh, size: 14),
-                  label: const Text('重新检测'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF6B7280),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            description,
-            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
-          ),
-          if (!installed && whenMissing != null) ...[
-            const SizedBox(height: 12),
-            whenMissing,
-          ],
         ],
       ),
     );
@@ -1150,15 +1613,15 @@ class HomePage extends GetView<HomeController> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'RWKV7 训练需要 CUDA Toolkit（CUDA_HOME 指向安装目录）。\n'
-            '启动时自动检测，未检测到可点击「一键安装 CUDA」或手动选择。',
+            'RWKV7 训练需要 CUDA_HOME 环境变量指向 CUDA 安装目录。\n'
+            '启动时会自动检测，也可手动选择。',
             style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.5),
           ),
           const SizedBox(height: 14),
           _labeledField(
             'CUDA 安装目录',
             controller.cudaHomeController,
-            hint: r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x 或 v13.x',
+            hint: r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x',
             onBrowse: controller.pickCudaHomeDir,
           ),
           const SizedBox(height: 12),
@@ -1171,41 +1634,33 @@ class HomePage extends GetView<HomeController> {
                 style: _btnStyle(const Color(0xFF3B82F6), compact: true),
               ),
               const SizedBox(width: 12),
+              // 检测结果状态指示
               Obx(() {
-                if (controller.cudaInstalled.value) {
-                  return Expanded(
-                    child: Row(
-                      children: [
-                        const Icon(Icons.check_circle,
-                            color: Color(0xFF22C55E), size: 18),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(controller.cudaHome.value,
-                              style: const TextStyle(
-                                  color: Color(0xFF22C55E), fontSize: 13),
-                              overflow: TextOverflow.ellipsis),
-                        ),
-                      ],
-                    ),
+                final path = controller.cudaHome.value;
+                if (path.isEmpty) {
+                  return const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded,
+                          color: Color(0xFFFBBF24), size: 18),
+                      SizedBox(width: 6),
+                      Text('未设置，训练时将尝试自动检测',
+                          style: TextStyle(
+                              color: Color(0xFFFBBF24), fontSize: 13)),
+                    ],
                   );
                 }
-                return Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: controller.isCudaInstalling.value
-                        ? null
-                        : controller.installCuda,
-                    icon: controller.isCudaInstalling.value
-                        ? const SizedBox(
-                            width: 18, height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.download, size: 18),
-                    label: Text(controller.isCudaInstalling.value
-                        ? '安装中...'
-                        : '一键安装 CUDA'),
-                    style: _btnStyle(const Color(0xFF7C3AED), compact: true),
-                  ),
+                return Row(
+                  children: [
+                    const Icon(Icons.check_circle,
+                        color: Color(0xFF22C55E), size: 18),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(path,
+                          style: const TextStyle(
+                              color: Color(0xFF22C55E), fontSize: 13),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                  ],
                 );
               }),
             ],
@@ -1213,20 +1668,6 @@ class HomePage extends GetView<HomeController> {
           const SizedBox(height: 10),
           Obx(() => _logBox(controller.cudaDetectLog.value,
               minHeight: 50, placeholder: '点击「自动检测」检查 CUDA 安装')),
-          Obx(() {
-            if (controller.cudaInstallLog.value.isEmpty) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _logLabel('CUDA 安装日志'),
-                  const SizedBox(height: 8),
-                  _logBox(controller.cudaInstallLog.value),
-                ],
-              ),
-            );
-          }),
         ],
       ),
     );
@@ -1235,222 +1676,105 @@ class HomePage extends GetView<HomeController> {
   Widget _buildEnvCard() {
     return _sectionCard(
         title: '环境配置',
-        child: Obx(() {
-          final ready = controller.envReady.value;
-          final checking = controller.isChecking.value;
-          final installing = controller.isInstalling.value;
-          return Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── 环境就绪状态栏 ──────────────────────────────────────
-            if (checking)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Row(children: [
-                  SizedBox(width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 12),
-                  Text('正在检测环境...', style: TextStyle(color: Color(0xFFB0B5BC))),
-                ]),
-              )
-            else if (ready)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Row(
+            const Text(
+              '一键安装 RWKV State Tuning 所需依赖\n'
+              '(来源: github.com/Joluck/statetuning)',
+              style: TextStyle(
+                  color: Color(0xFFB0B5BC), fontSize: 14, height: 1.5),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1D21),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF3A3F47)),
+              ),
+              child: const SelectableText(
+                'torch>=2.0.0\ntransformers>=4.30.0\ntqdm>=4.65.0\nhuggingface-hub',
+                style: TextStyle(
+                    color: Color(0xFF86EFAC),
+                    fontSize: 12,
+                    fontFamily: 'monospace'),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Obx(() => Row(
                   children: [
-                    Icon(Icons.check_circle, color: Colors.green[400], size: 22),
-                    const SizedBox(width: 10),
                     Expanded(
-                      child: Text('所有环境已就绪',
-                          style: TextStyle(color: Colors.green[400],
-                              fontSize: 15, fontWeight: FontWeight.w600)),
+                      child: ElevatedButton.icon(
+                        onPressed: controller.isInstalling.value
+                            ? null
+                            : controller.installEnvironment,
+                        icon: controller.isInstalling.value
+                            ? const SizedBox(
+                                width: 20, height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.install_desktop),
+                        label: Text(controller.isInstalling.value
+                            ? '安装中...'
+                            : '一键安装'),
+                        style: _btnStyle(const Color(0xFF3B82F6)),
+                      ),
                     ),
-                    TextButton.icon(
-                      onPressed: controller.checkEnvironment,
-                      icon: const Icon(Icons.refresh, size: 16),
-                      label: const Text('重新检测'),
-                      style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF6B7280)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: (controller.isInstalling.value ||
+                                controller.isChecking.value)
+                            ? null
+                            : controller.checkEnvironment,
+                        icon: controller.isChecking.value
+                            ? const SizedBox(
+                                width: 20, height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.verified_user),
+                        label: Text(controller.isChecking.value
+                            ? '检测中...'
+                            : '检测环境'),
+                        style: _btnStyle(controller.envReady.value
+                            ? const Color(0xFF22C55E)
+                            : const Color(0xFF6B7280)),
+                      ),
                     ),
                   ],
-                ),
-              )
-            else ...[
-              // ── 未安装 UV 时优先显示 ────────────────────────────────
-              Obx(() {
-                if (!controller.uvInstalled.value) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.warning_amber_rounded,
-                              color: Color(0xFFFBBF24), size: 20),
-                          SizedBox(width: 8),
-                          Text('未检测到 UV，依赖将安装到项目目录',
-                              style: TextStyle(color: Color(0xFFFBBF24),
-                                  fontSize: 14, fontWeight: FontWeight.w500)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'UV 会创建 python_venv 虚拟环境，依赖装到项目目录，不占用 C 盘。',
-                        style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 12),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: controller.isUvInstalling.value
-                              ? null
-                              : controller.installUv,
-                          icon: controller.isUvInstalling.value
-                              ? const SizedBox(
-                                  width: 20, height: 20,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Icon(Icons.download),
-                          label: Text(controller.isUvInstalling.value
-                              ? '安装中...'
-                              : '一键安装 UV'),
-                          style: _btnStyle(const Color(0xFF7C3AED)),
-                        ),
-                      ),
-                      if (controller.uvInstallLog.value.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        _logLabel('UV 安装日志'),
-                        const SizedBox(height: 8),
-                        Obx(() => _logBox(controller.uvInstallLog.value)),
-                      ],
-                      const SizedBox(height: 20),
-                      const Divider(color: Color(0xFF3A3F47)),
-                      const SizedBox(height: 12),
-                    ],
-                  );
-                }
-                return const SizedBox.shrink();
-              }),
-              const Text(
-                '以下依赖将安装到项目 python_venv 目录（不占 C 盘），点击「一键安装」：\n'
-                '(来源: github.com/Joluck/statetuning)',
-                style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 14, height: 1.5),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1D21),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF3A3F47)),
-                ),
-                child: const SelectableText(
-                  'UV 创建 python_venv → 安装：\n'
-                  'torch>=2.0.0  [GPU/CUDA，自动匹配 CUDA 版本]\n'
-                  'transformers>=4.30.0\n'
-                  'tqdm>=4.65.0\n'
-                  'huggingface-hub\n'
-                  'ninja          [CUDA 扩展构建]',
-                  style: TextStyle(color: Color(0xFF86EFAC),
-                      fontSize: 12, fontFamily: 'monospace'),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: installing ? null : controller.installEnvironment,
-                      icon: installing
-                          ? const SizedBox(width: 20, height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.install_desktop),
-                      label: Text(installing ? '安装中...' : '一键安装'),
-                      style: _btnStyle(const Color(0xFF3B82F6)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: (installing || checking)
-                          ? null : controller.checkEnvironment,
-                      icon: checking
-                          ? const SizedBox(width: 20, height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.verified_user),
-                      label: Text(checking ? '检测中...' : '检测环境'),
-                      style: _btnStyle(const Color(0xFF6B7280)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            // ── 检测结果日志（有问题时才显示）────────────────────────
-            if (!ready) ...[
-              const SizedBox(height: 16),
-              _logLabel('检测结果'),
-              const SizedBox(height: 8),
-              _logBox(controller.checkLog.value,
-                  placeholder: '正在检测环境...'),
-            ],
-            // ── 安装日志（有内容时才显示）────────────────────────────
-            if (controller.installLog.value.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              _logLabel('安装日志'),
-              const SizedBox(height: 8),
-              _logBox(controller.installLog.value,
-                  placeholder: '点击「一键安装」开始安装...'),
-            ],
-            const SizedBox(height: 24),
-            const Divider(color: Color(0xFF3A3F47)),
-            const SizedBox(height: 16),
-            const Text(
-              'CUDA 编译工具',
-              style: TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              '训练时需要实时编译 CUDA 内核（rwkv7_state_clampw），'
-              '必须安装 MSVC C++ 编译器。\n'
-              '点击下方按钮自动安装轻量版编译工具（约 1.5 GB，无 IDE）：\n'
-              '  • ninja  — 构建系统（pip 安装，几 MB）\n'
-              '  • MSVC C++ 编译器 + Windows SDK（通过 winget 安装）',
-              style: TextStyle(
-                  color: Color(0xFFB0B5BC), fontSize: 13, height: 1.6),
-            ),
-            const SizedBox(height: 12),
-            Obx(() => SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: controller.isBuildToolsInstalling.value
-                        ? null
-                        : controller.installBuildTools,
-                    icon: controller.isBuildToolsInstalling.value
-                        ? const SizedBox(
-                            width: 20, height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.build),
-                    label: Text(controller.isBuildToolsInstalling.value
-                        ? '安装中...'
-                        : '安装编译工具（ninja + MSVC）'),
-                    style: _btnStyle(const Color(0xFF7C3AED)),
-                  ),
                 )),
-            const SizedBox(height: 12),
-            _logLabel('编译工具安装日志'),
+            Obx(() => controller.envReady.value
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Row(
+                      children: [
+                        Icon(Icons.check_circle,
+                            color: Colors.green[400], size: 20),
+                        const SizedBox(width: 8),
+                        Text('所有环境已经准备好',
+                            style: TextStyle(
+                                color: Colors.green[400],
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink()),
+            const SizedBox(height: 20),
+            _logLabel('安装日志'),
             const SizedBox(height: 8),
-            Obx(() => _logBox(controller.buildToolsLog.value,
-                placeholder: '点击「安装编译工具」开始安装...')),
+            Obx(() => _logBox(controller.installLog.value,
+                placeholder: '点击「一键安装」开始安装...')),
+            const SizedBox(height: 16),
+            _logLabel('检测结果'),
+            const SizedBox(height: 8),
+            Obx(() => _logBox(controller.checkLog.value,
+                placeholder: '点击「检测环境」按钮检查依赖是否已安装')),
           ],
-        );
-        }), // end Obx
+        ),
     );
   }
 
@@ -1487,7 +1811,6 @@ class HomePage extends GetView<HomeController> {
     TextInputType keyboardType = TextInputType.text,
     VoidCallback? onBrowse,
     IconData browseIcon = Icons.folder_open,
-    bool readOnly = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1500,7 +1823,6 @@ class HomePage extends GetView<HomeController> {
             Expanded(
               child: TextField(
                 controller: ctrl,
-                readOnly: readOnly,
                 keyboardType: keyboardType,
                 style: const TextStyle(color: Colors.white, fontSize: 14),
                 decoration: InputDecoration(
