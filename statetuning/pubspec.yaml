@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   get: ^4.6.6
   file_picker: ^10.3.10
+  path_provider: ^2.1.5
   fl_chart: ^0.70.2
   archive: ^4.0.0
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'distillation_controller.dart';
 import 'home_controller.dart';
 import 'home_page.dart';
 
@@ -25,6 +26,7 @@ class MyApp extends StatelessWidget {
       ),
       initialBinding: BindingsBuilder(() {
         Get.lazyPut<HomeController>(() => HomeController());
+        Get.lazyPut<DistillationController>(() => DistillationController());
       }),
       home: const HomePage(),
     );
