@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -331,8 +332,9 @@ class DistillationController extends GetxController {
   // --- 任务 ---
   final distillTasks = <DistillTask>[].obs;
   final distillLog = ''.obs;
-  Timer? _simulateTimer;
   String? _runningTaskId;
+  bool _cancelRequested = false;
+  final Random _random = Random();
 
   // --- 创建任务表单 ---
   late final TextEditingController taskNameController;
@@ -419,7 +421,6 @@ class DistillationController extends GetxController {
 
   @override
   void onClose() {
-    _simulateTimer?.cancel();
     taskNameController.dispose();
     taskCountController.dispose();
     taskConcurrencyController.dispose();
@@ -485,6 +486,333 @@ class DistillationController extends GetxController {
     } catch (_) {}
   }
 
+  void _appendLog(String message) {
+    final next = '${distillLog.value}[${DateTime.now().toIso8601String()}] $message\n';
+    final lines = const LineSplitter().convert(next);
+    distillLog.value = lines.length > 400
+        ? '${lines.sublist(lines.length - 400).join('\n')}\n'
+        : next;
+  }
+
+  LLMProvider? _resolveProvider(DistillTaskConfig config) {
+    if (config.providerId == null || config.providerId!.isEmpty) {
+      return null;
+    }
+    for (final provider in llmProviders) {
+      if (provider.id == config.providerId) {
+        return provider;
+      }
+    }
+    return null;
+  }
+
+  String _weightedPick(Map<String, int> weights) {
+    final total = weights.values.fold<int>(0, (sum, value) => sum + value);
+    if (total <= 0) return weights.keys.first;
+    var point = _random.nextInt(total);
+    for (final entry in weights.entries) {
+      point -= entry.value;
+      if (point < 0) return entry.key;
+    }
+    return weights.keys.first;
+  }
+
+  String _pickLanguage(LanguageRatios ratios) {
+    return _weightedPick(ratios.toMap());
+  }
+
+  String _pickTopic(DistillTask task) {
+    final topics = (task.config.selectedTopics != null && task.config.selectedTopics!.isNotEmpty)
+        ? task.config.selectedTopics!
+        : availableTopics;
+    return topics[_random.nextInt(topics.length)];
+  }
+
+  String _languageName(String code) {
+    const names = {
+      'zh': '中文',
+      'en': 'English',
+      'ja': '日本語',
+      'ko': '한국어',
+      'de': 'Deutsch',
+      'fr': 'Français',
+      'es': 'Español',
+      'ru': 'Русский',
+    };
+    return names[code] ?? code;
+  }
+
+  List<Map<String, String>> _buildLocalTurns({
+    required String language,
+    required String topic,
+    required bool toolMode,
+    required int index,
+  }) {
+    final langName = _languageName(language);
+    final user = '$langName 用户请你聊聊「$topic」这个话题，并给出一个实用建议。';
+    final assistant = toolMode
+        ? '当然可以。关于 $topic，我会先整理需求，再给出一个可执行的方案，并说明如果要调用工具通常会检查哪些信息。'
+        : '当然可以。关于 $topic，这里有一个简洁、自然、适合训练用的回答示例，并附带一个可执行的小建议。';
+    final extraUser = '如果我是初学者，应该先从哪一步开始？';
+    final extraAssistant = '建议先从最基础的一步开始，设定一个很小但能坚持的目标，然后逐步扩展。';
+
+    if (!toolMode) {
+      return [
+        {'role': 'user', 'say': user},
+        {'role': 'assistant', 'respond': '$assistant (样本 ${index + 1})'},
+      ];
+    }
+
+    return [
+      {'role': 'user', 'say': user},
+      {'role': 'assistant', 'respond': assistant},
+      {'role': 'user', 'say': extraUser},
+      {'role': 'assistant', 'respond': '$extraAssistant (样本 ${index + 1})'},
+    ];
+  }
+
+  Future<Map<String, dynamic>> _generateProviderRecord(
+    DistillTask task,
+    int index,
+    String language,
+    String topic,
+  ) async {
+    final provider = _resolveProvider(task.config);
+    final apiKey = provider?.apiKey ?? task.config.apiKey;
+    final baseUrl = provider?.apiBaseUrl ?? '';
+    final model = provider?.model ?? '';
+
+    if (apiKey == null || apiKey.isEmpty || baseUrl.isEmpty || model.isEmpty) {
+      throw StateError('未配置可用的 LLM 服务商');
+    }
+
+    final toolMode = task.config.generatorType == 'tool';
+    final uri = Uri.parse(baseUrl.endsWith('/chat/completions')
+        ? baseUrl
+        : '${baseUrl.replaceAll(RegExp(r'/$'), '')}/chat/completions');
+
+    final prompt = toolMode
+        ? '请生成一段适合 RWKV 微调用的多轮对话数据，语言为 ${_languageName(language)}，主题为 $topic。'
+            '返回严格 JSON：{"turns":[{"role":"user","say":"..."},{"role":"assistant","respond":"..."},'
+            '{"role":"user","say":"..."},{"role":"assistant","respond":"..."}]}。'
+        : '请生成一段适合 RWKV 微调用的单轮问答数据，语言为 ${_languageName(language)}，主题为 $topic。'
+            '返回严格 JSON：{"turns":[{"role":"user","say":"..."},{"role":"assistant","respond":"..."}]}。';
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final request = await client.postUrl(uri);
+      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
+      request.write(jsonEncode({
+        'model': model,
+        'temperature': task.config.temperature,
+        'response_format': {'type': 'json_object'},
+        'messages': [
+          {
+            'role': 'system',
+            'content': '你是训练数据生成器。只输出合法 JSON，不要输出解释文字。',
+          },
+          {
+            'role': 'user',
+            'content': prompt,
+          },
+        ],
+      }));
+
+      final response = await request.close().timeout(const Duration(seconds: 90));
+      final responseBody = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException('HTTP ${response.statusCode}: $responseBody');
+      }
+
+      final json = jsonDecode(responseBody) as Map<String, dynamic>;
+      final choices = (json['choices'] as List?) ?? const [];
+      if (choices.isEmpty) {
+        throw const FormatException('LLM 返回为空');
+      }
+
+      final message = Map<String, dynamic>.from((choices.first as Map)['message'] as Map);
+      final content = (message['content'] ?? '').toString().trim();
+      final parsed = _tryParseEmbeddedJson(content);
+      final turnsRaw = parsed['turns'];
+      if (turnsRaw is! List) {
+        throw const FormatException('返回 JSON 不包含 turns');
+      }
+
+      final turns = turnsRaw
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .map((item) {
+            final role = (item['role'] ?? '').toString();
+            if (role == 'assistant') {
+              return {
+                'role': 'assistant',
+                'respond': (item['respond'] ?? item['content'] ?? '').toString(),
+              };
+            }
+            return {
+              'role': 'user',
+              'say': (item['say'] ?? item['content'] ?? '').toString(),
+            };
+          })
+          .toList();
+
+      return {
+        'id': '${task.id}_$index',
+        'generator_type': task.config.generatorType,
+        'language': language,
+        'topic': topic,
+        'turns': turns,
+      };
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Map<String, dynamic> _tryParseEmbeddedJson(String content) {
+    try {
+      return Map<String, dynamic>.from(jsonDecode(content) as Map);
+    } catch (_) {
+      final start = content.indexOf('{');
+      final end = content.lastIndexOf('}');
+      if (start >= 0 && end > start) {
+        return Map<String, dynamic>.from(
+          jsonDecode(content.substring(start, end + 1)) as Map,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> _generateTaskRecord(DistillTask task, int index) async {
+    final language = _pickLanguage(task.config.langRatios);
+    final topic = _pickTopic(task);
+    try {
+      final provider = _resolveProvider(task.config);
+      if (provider != null || (task.config.apiKey?.isNotEmpty ?? false)) {
+        return await _generateProviderRecord(task, index, language, topic);
+      }
+    } catch (e) {
+      _appendLog('LLM 生成失败，回退到本地样例: $e');
+    }
+
+    return {
+      'id': '${task.id}_$index',
+      'generator_type': task.config.generatorType,
+      'language': language,
+      'topic': topic,
+      'turns': _buildLocalTurns(
+        language: language,
+        topic: topic,
+        toolMode: task.config.generatorType == 'tool',
+        index: index,
+      ),
+    };
+  }
+
+  Future<void> _appendTaskRecord(DistillTask task, Map<String, dynamic> record) async {
+    final file = File(task.dataFile);
+    await file.parent.create(recursive: true);
+    final sink = file.openWrite(mode: FileMode.append);
+    sink.writeln(jsonEncode(record));
+    await sink.flush();
+    await sink.close();
+  }
+
+  String _extractAssistantText(Map<String, dynamic> turn) {
+    return (turn['respond'] ?? turn['say'] ?? turn['content'] ?? '').toString().trim();
+  }
+
+  String _extractUserText(Map<String, dynamic> turn) {
+    return (turn['say'] ?? turn['content'] ?? turn['respond'] ?? '').toString().trim();
+  }
+
+  String _fixRwkvText(String text) {
+    final trimmed = text.trimRight();
+    if (trimmed.endsWith('\n\n# User')) return '$trimmed\n\n';
+    if (trimmed.endsWith('\n\n# User\n\n')) return trimmed;
+    return '$trimmed\n\n# User\n\n';
+  }
+
+  Map<String, String>? _convertRecordToRwkv(
+    Map<String, dynamic> record,
+    String formatType,
+  ) {
+    final turnsRaw = record['turns'];
+    final turns = turnsRaw is List
+        ? turnsRaw.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+        : <Map<String, dynamic>>[];
+    if (turns.isEmpty) return null;
+
+    if (formatType == 'single_turn') {
+      final user = turns.firstWhere(
+        (t) => (t['role'] ?? '').toString() == 'user',
+        orElse: () => const {},
+      );
+      final assistant = turns.firstWhere(
+        (t) => (t['role'] ?? '').toString() == 'assistant',
+        orElse: () => const {},
+      );
+      if (user.isEmpty || assistant.isEmpty) return null;
+      return {
+        'text': _fixRwkvText(
+          'User: ${_extractUserText(user)}\n\nAssistant: ${_extractAssistantText(assistant)}',
+        ),
+      };
+    }
+
+    if (formatType == 'instruction') {
+      final user = turns.firstWhere(
+        (t) => (t['role'] ?? '').toString() == 'user',
+        orElse: () => const {},
+      );
+      final assistant = turns.firstWhere(
+        (t) => (t['role'] ?? '').toString() == 'assistant',
+        orElse: () => const {},
+      );
+      if (user.isEmpty || assistant.isEmpty) return null;
+      return {
+        'text': _fixRwkvText(
+          'Instruction: 请根据输入生成回答\n\n'
+          'Input: ${_extractUserText(user)}\n\n'
+          'Response: ${_extractAssistantText(assistant)}',
+        ),
+      };
+    }
+
+    final parts = <String>[];
+    for (final turn in turns) {
+      final role = (turn['role'] ?? '').toString();
+      if (role == 'assistant') {
+        final text = _extractAssistantText(turn);
+        if (text.isNotEmpty) parts.add('Assistant: $text');
+      } else {
+        final text = _extractUserText(turn);
+        if (text.isNotEmpty) parts.add('User: $text');
+      }
+    }
+    if (parts.isEmpty) return null;
+    return {'text': _fixRwkvText(parts.join('\n\n'))};
+  }
+
+  Future<List<Map<String, dynamic>>> _readTaskRecords(List<String> taskIds) async {
+    final records = <Map<String, dynamic>>[];
+    for (final taskId in taskIds) {
+      final task = distillTasks.firstWhereOrNull((t) => t.id == taskId);
+      if (task == null) continue;
+      final file = File(task.dataFile);
+      if (!await file.exists()) continue;
+      final lines = await file.readAsLines();
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) continue;
+        try {
+          records.add(Map<String, dynamic>.from(jsonDecode(trimmed) as Map));
+        } catch (_) {}
+      }
+    }
+    return records;
+  }
+
   String? validateCreateTask() {
     final name = taskNameController.text.trim();
     if (name.isEmpty) return '请输入任务名称';
@@ -538,61 +866,86 @@ class DistillationController extends GetxController {
     final list = distillTasks.where((x) => x.id == taskId).toList();
     if (list.isEmpty) return;
     final t = list.first;
-    if (t == null || t.status != DistillTaskStatus.pending) return;
+    if (t.status != DistillTaskStatus.pending) return;
+    if (_runningTaskId != null) {
+      Get.snackbar('提示', '当前已有任务运行中，请先等待完成或取消');
+      return;
+    }
+
     t.status = DistillTaskStatus.running;
     t.stats.startTime = DateTime.now().toIso8601String();
+    t.stats.endTime = null;
     _runningTaskId = taskId;
-    distillLog.value = '[${DateTime.now()}] 开始任务: ${t.name}\n';
+    _cancelRequested = false;
+    _appendLog('开始任务: ${t.name}');
     await _saveTasks();
-
-    // 模拟运行（无后端时）
-    _simulateProgress(taskId);
+    unawaited(_processTask(taskId));
   }
 
-  void _simulateProgress(String taskId) {
-    _simulateTimer?.cancel();
-    _simulateTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
-      final list = distillTasks.where((x) => x.id == taskId).toList();
-      if (list.isEmpty) {
-        _simulateTimer?.cancel();
-        _runningTaskId = null;
-        return;
-      }
-      final t = list.first;
-      if (t.status != DistillTaskStatus.running) {
-        _simulateTimer?.cancel();
-        _runningTaskId = null;
-        return;
-      }
-      t.stats.recordsGenerated = (t.stats.recordsGenerated + 1).clamp(0, t.config.count);
-      t.stats.currentSpeed = 12.0 + (DateTime.now().millisecond % 10);
-      t.stats.estimatedRemaining =
-          ((t.config.count - t.stats.recordsGenerated) / t.stats.currentSpeed * 60).round();
-      t.updatedAt = DateTime.now().toIso8601String();
+  Future<void> _processTask(String taskId) async {
+    final task = distillTasks.firstWhereOrNull((x) => x.id == taskId);
+    if (task == null) return;
+    final startedAt = DateTime.now();
 
-      if (t.stats.recordsGenerated >= t.config.count) {
-        t.status = DistillTaskStatus.completed;
-        t.stats.endTime = DateTime.now().toIso8601String();
-        distillLog.value += '[${DateTime.now()}] 任务完成: ${t.name}\n';
-        _simulateTimer?.cancel();
-        _runningTaskId = null;
+    try {
+      while (!_cancelRequested && task.stats.recordsGenerated < task.config.count) {
+        final record = await _generateTaskRecord(task, task.stats.recordsGenerated);
+        await _appendTaskRecord(task, record);
+        task.stats.recordsGenerated += 1;
+        final elapsedSeconds = max(1, DateTime.now().difference(startedAt).inSeconds);
+        task.stats.currentSpeed = task.stats.recordsGenerated / elapsedSeconds * 60;
+        final remaining = max(0, task.config.count - task.stats.recordsGenerated);
+        task.stats.estimatedRemaining = task.stats.currentSpeed > 0
+            ? (remaining / task.stats.currentSpeed * 60).round()
+            : 0;
+        task.updatedAt = DateTime.now().toIso8601String();
+
+        if (task.stats.recordsGenerated % 10 == 0 ||
+            task.stats.recordsGenerated == task.config.count) {
+          _appendLog(
+            '任务 ${task.name}: ${task.stats.recordsGenerated}/${task.config.count} '
+            '(${task.stats.currentSpeed.toStringAsFixed(1)} 条/分钟)',
+          );
+        }
+        await _saveTasks();
+        await Future<void>.delayed(const Duration(milliseconds: 120));
       }
+
+      if (_cancelRequested) {
+        task.status = DistillTaskStatus.cancelled;
+        _appendLog('任务已取消: ${task.name}');
+      } else {
+        task.status = DistillTaskStatus.completed;
+        task.stats.endTime = DateTime.now().toIso8601String();
+        _appendLog('任务完成: ${task.name}');
+      }
+      task.updatedAt = DateTime.now().toIso8601String();
       await _saveTasks();
-    });
+    } catch (e) {
+      task.status = DistillTaskStatus.failed;
+      task.errorMessage = e.toString();
+      task.updatedAt = DateTime.now().toIso8601String();
+      _appendLog('任务失败: ${task.name} - $e');
+      await _saveTasks();
+      Get.snackbar('任务失败', e.toString());
+    } finally {
+      _cancelRequested = false;
+      _runningTaskId = null;
+    }
   }
 
   Future<void> cancelTask(String taskId) async {
     final list = distillTasks.where((x) => x.id == taskId).toList();
     if (list.isEmpty) return;
     final t = list.first;
-    if (t == null) return;
     if (t.status == DistillTaskStatus.running) {
-      _simulateTimer?.cancel();
-      _runningTaskId = null;
+      _cancelRequested = true;
+      Get.snackbar('已取消', '任务 ${t.name} 正在停止');
+      return;
     }
     t.status = DistillTaskStatus.cancelled;
     t.updatedAt = DateTime.now().toIso8601String();
-    distillLog.value += '[${DateTime.now()}] 任务已取消: ${t.name}\n';
+    _appendLog('任务已取消: ${t.name}');
     await _saveTasks();
     Get.snackbar('已取消', '任务 ${t.name} 已取消');
   }
@@ -601,7 +954,6 @@ class DistillationController extends GetxController {
     final list = distillTasks.where((x) => x.id == taskId).toList();
     if (list.isEmpty) return;
     final t = list.first;
-    if (t == null) return;
     if (t.status == DistillTaskStatus.running) {
       Get.snackbar('提示', '请先取消运行中的任务');
       return;
@@ -714,42 +1066,66 @@ class DistillationController extends GetxController {
     final outDir = '$dir${Platform.pathSeparator}export';
     await Directory(outDir).create(recursive: true);
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final outFile = '$outDir${Platform.pathSeparator}export_$ts.jsonl';
-
-    var totalRecords = 0;
-    for (final tid in exportSelectedTaskIds) {
-      final t = distillTasks.where((x) => x.id == tid).firstOrNull;
-      if (t != null) {
-        totalRecords += t.stats.recordsGenerated;
-      }
+    final sourceRecords = await _readTaskRecords(exportSelectedTaskIds);
+    if (sourceRecords.isEmpty) {
+      Get.snackbar('提示', '选中的任务没有可导出的数据');
+      return;
     }
 
-    // 占位：实际需合并 task 的 dataFile，此处仅创建空文件并记录
-    await File(outFile).writeAsString('', flush: true);
+    final converted = <Map<String, String>>[];
+    final seenTexts = <String>{};
+    for (final record in sourceRecords) {
+      final rwkv = _convertRecordToRwkv(record, exportFormat.value);
+      if (rwkv == null) continue;
+      final text = rwkv['text'] ?? '';
+      if (text.isEmpty || !seenTexts.add(text)) continue;
+      converted.add(rwkv);
+    }
 
-    exportHistory.insert(
-      0,
-      ExportRecord(
-        id: 'exp_$ts',
-        exportedAt: DateTime.now().toIso8601String(),
-        taskIds: List.from(exportSelectedTaskIds),
-        formatType: exportFormat.value,
-        outputFile: outFile,
-        recordsCount: totalRecords,
-      ),
+    if (converted.isEmpty) {
+      Get.snackbar('提示', '没有可转换的 RWKV 记录');
+      return;
+    }
+
+    if (exportShuffle.value) {
+      converted.shuffle(_random);
+    }
+
+    final outFile = '$outDir${Platform.pathSeparator}export_$ts.jsonl';
+    final sink = File(outFile).openWrite();
+    for (final item in converted) {
+      sink.writeln(jsonEncode(item));
+    }
+    await sink.flush();
+    await sink.close();
+
+    final record = ExportRecord(
+      id: 'exp_$ts',
+      exportedAt: DateTime.now().toIso8601String(),
+      taskIds: List.from(exportSelectedTaskIds),
+      formatType: exportFormat.value,
+      outputFile: outFile,
+      recordsCount: converted.length,
     );
-    exportSelectedTaskIds.clear();
-    for (final tid in exportHistory.first.taskIds) {
-      final t = distillTasks.where((x) => x.id == tid).firstOrNull;
+    exportHistory.insert(0, record);
+    for (final tid in exportSelectedTaskIds) {
+      final t = distillTasks.firstWhereOrNull((x) => x.id == tid);
       if (t != null) t.exportStatus = 'exported';
     }
+    exportSelectedTaskIds.clear();
     await _saveTasks();
     await _saveExportHistory();
-    Get.snackbar('导出完成', '已导出到 $outFile');
+    _appendLog('RWKV 导出完成: $outFile (${converted.length} 条)');
+    Get.snackbar('导出完成', '已导出 ${converted.length} 条到 $outFile');
+  }
+
+  Future<void> exportBinidx() async {
+    Get.snackbar('暂未实现', 'BINIDX 需要接入 json2binidx 工具，当前已实现 RWKV JSONL 导出');
   }
 
   // --- LLM 服务商 ---
   void addLLMProvider(LLMProvider p) {
+    llmProviders.removeWhere((item) => item.id == p.id || item.name == p.name);
     llmProviders.add(p);
     _saveProviders();
   }

@@ -1180,8 +1180,11 @@ class HomePage extends GetView<HomeController> {
             onChanged: (v) {
               final n = int.tryParse(v);
               if (n != null && n >= 0 && n <= 100) {
-                if (isLevel) dc.setLevelRatio(key, n);
-                else dc.setLangRatio(key, n);
+                if (isLevel) {
+                  dc.setLevelRatio(key, n);
+                } else {
+                  dc.setLangRatio(key, n);
+                }
               }
             },
             style: const TextStyle(color: Colors.white, fontSize: 14),
@@ -1591,7 +1594,7 @@ class HomePage extends GetView<HomeController> {
                       ),
                       const SizedBox(width: 10),
                       ElevatedButton.icon(
-                        onPressed: () {},
+                        onPressed: () => dc.exportBinidx(),
                         icon: const Icon(Icons.square, size: 18),
                         label: const Text('导出 BINIDX'),
                         style: _btnStyle(const Color(0xFF22C55E), compact: true),
