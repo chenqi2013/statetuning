@@ -70,6 +70,9 @@ class HomeController extends GetxController {
   // step → loss，用于去重（每步 tqdm 会打两次）
   final _lossMap = <int, double>{};
   final lossHistory = <double>[].obs;
+  final _lossLogFileName = 'loss_log.txt';
+  String? _lossLogPath;
+  final lossLogReady = false.obs;
   Process? _trainingProcess;
   // 日志缓冲区 + 定时刷新，避免高频 stdout 触发过多 UI 重建
   // _logLines: 已完成的行列表；_logCurrentLine: 当前未换行的内容
@@ -249,6 +252,64 @@ class HomeController extends GetxController {
         detectCudaHome();
       }
     });
+  }
+
+  String _resolvedOutputDirPath() {
+    return outputDir.value.startsWith('./') || outputDir.value == '.'
+        ? '${repoPath.value}${Platform.pathSeparator}${outputDir.value}'
+        : outputDir.value;
+  }
+
+  Future<void> _initLossLogFile() async {
+    // 只有在训练启动后，repoPath/outputDir 才应当可用
+    if (repoPath.value.isEmpty) return;
+    final resolvedOutDir = _resolvedOutputDirPath();
+    final dir = Directory(resolvedOutDir);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    _lossLogPath = '$resolvedOutDir${Platform.pathSeparator}$_lossLogFileName';
+    final header = 'step,loss\n';
+    await File(_lossLogPath!).writeAsString(header, mode: FileMode.write);
+    lossLogReady.value = true;
+  }
+
+  Future<void> _appendLossLogLine(int step, double loss) async {
+    if (_lossLogPath == null) return;
+    final line = '${step},${loss.toStringAsFixed(6)}\n';
+    await File(_lossLogPath!).writeAsString(line, mode: FileMode.append);
+  }
+
+  Future<void> exportLossLog() async {
+    try {
+      final resolvedOutDir = repoPath.value.isEmpty ? '' : _resolvedOutputDirPath();
+      final path = _lossLogPath ??
+          (resolvedOutDir.isEmpty
+              ? ''
+              : '$resolvedOutDir${Platform.pathSeparator}$_lossLogFileName');
+
+      if (path.isEmpty) {
+        Get.snackbar('提示', '未找到 loss log 文件');
+        return;
+      }
+
+      final file = File(path);
+      if (!await file.exists()) {
+        Get.snackbar('提示', '未找到 loss log 文件（请先运行训练并生成 loss 曲线）');
+        return;
+      }
+
+      final dir = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: '选择导出目录',
+      );
+      if (dir == null || dir.isEmpty) return;
+
+      final destPath = '$dir${Platform.pathSeparator}$_lossLogFileName';
+      await file.copy(destPath);
+      Get.snackbar('导出完成', 'loss log 已导出到: $destPath', duration: const Duration(seconds: 4));
+    } catch (e) {
+      Get.snackbar('导出失败', '$e');
+    }
   }
 
   @override
@@ -1274,6 +1335,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     _logCurrentLine = '';
     _lossMap.clear();
     lossHistory.value = [];
+    lossLogReady.value = false;
+    await _initLossLogFile();
     currentTabIndex.value = 3;
 
     try {
@@ -1400,7 +1463,12 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       final step = int.tryParse(m.group(1)!) ?? 0;
       final loss = double.tryParse(m.group(2)!) ?? 0;
       if (step > 0 && loss > 0) {
+        final alreadyHaveStep = _lossMap.containsKey(step);
         _lossMap[step] = loss;
+        // 每个 step 只写入一次，避免日志暴涨
+        if (!alreadyHaveStep) {
+          unawaited(_appendLossLogLine(step, loss));
+        }
         changed = true;
       }
     }

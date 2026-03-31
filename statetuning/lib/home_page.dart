@@ -632,6 +632,18 @@ class HomePage extends GetView<HomeController> {
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ElevatedButton.icon(
+                    onPressed: controller.exportLossLog,
+                    icon: const Icon(Icons.file_present, size: 18),
+                    label: const Text('导出 loss log'),
+                    style: _btnStyle(const Color(0xFF3B82F6), compact: true),
+                  ),
+                );
+              }),
+              Obx(() {
+                if (controller.lossHistory.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ElevatedButton.icon(
                     onPressed: () => _showLossChart(context),
                     icon: const Icon(Icons.show_chart, size: 18),
                     label: const Text('查看Loss曲线'),
