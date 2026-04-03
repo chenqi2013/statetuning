@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -1435,26 +1437,58 @@ class HomePage extends GetView<HomeController> {
               style: TextStyle(
                   color: Color(0xFFB0B5BC), fontSize: 13, height: 1.6),
             ),
+            if (Platform.isWindows) ...[
+              const SizedBox(height: 12),
+              Obx(() => _buildStatusRow(
+                    'ninja',
+                    controller.ninjaOnPath.value,
+                    description: '系统 PATH 或项目 python_venv/Scripts 中存在 ninja（pip 安装）',
+                    onRetry: controller.detectBuildTools,
+                  )),
+              const SizedBox(height: 10),
+              Obx(() => _buildStatusRow(
+                    'MSVC C++（cl.exe）',
+                    controller.msvcClOnPath.value,
+                    description: 'Visual Studio Build Tools：C++ 编译器与 Windows SDK',
+                    onRetry: controller.detectBuildTools,
+                  )),
+            ],
             const SizedBox(height: 12),
-            Obx(() => SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: controller.isBuildToolsInstalling.value
-                        ? null
-                        : controller.installBuildTools,
-                    icon: controller.isBuildToolsInstalling.value
-                        ? const SizedBox(
-                            width: 20, height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.build),
-                    label: Text(controller.isBuildToolsInstalling.value
+            Obx(() {
+              final installing = controller.isBuildToolsInstalling.value;
+              final ready = controller.buildToolsFullyReady.value;
+              return SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: (installing || ready)
+                      ? null
+                      : controller.installBuildTools,
+                  icon: installing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : Icon(
+                          ready ? Icons.check_circle : Icons.build,
+                          size: 20,
+                        ),
+                  label: Text(
+                    installing
                         ? '安装中...'
-                        : '安装编译工具（ninja + MSVC）'),
-                    style: _btnStyle(const Color(0xFF7C3AED)),
+                        : ready
+                            ? '已安装（ninja + MSVC）'
+                            : '安装编译工具（ninja + MSVC）',
                   ),
-                )),
+                  style: _btnStyle(
+                    ready
+                        ? const Color(0xFF166534)
+                        : const Color(0xFF7C3AED),
+                  ),
+                ),
+              );
+            }),
             const SizedBox(height: 12),
             _logLabel('编译工具安装日志'),
             const SizedBox(height: 8),

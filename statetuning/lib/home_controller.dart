@@ -10,6 +10,12 @@ import 'package:get/get.dart';
 
 enum TrainingPrecision { bf16, fp16, fp32 }
 
+/// pip/uv/winget 等在中文 Windows 下可能输出 GBK；`Process` 用严格 UTF-8 解码会抛 FormatException。
+const Utf8Codec _processUtf8AllowMalformed = Utf8Codec(allowMalformed: true);
+
+/// winget `APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE`：已安装且无可用升级，仍返回非零。
+const int _wingetUpdateNotApplicable = -1978335189;
+
 // RWKV7 model size presets
 class Rwkv7Preset {
   final String label;
@@ -89,6 +95,7 @@ class HomeController extends GetxController {
   // --- 系统基础（全新电脑首要依赖）---
   final wingetInstalled = false.obs;
   final nvidiaDriverInstalled = false.obs;
+
   /// winget 所在目录（不在 PATH 时自动查找并用于子进程）
   String? _wingetDirForPath;
 
@@ -113,7 +120,6 @@ class HomeController extends GetxController {
     'torch',
     'transformers',
     'tqdm',
-
     'huggingface_hub',
     'ninja',
     'einops',
@@ -139,6 +145,12 @@ class HomeController extends GetxController {
   // --- Build Tools (MSVC + ninja) ---
   final isBuildToolsInstalling = false.obs;
   final buildToolsLog = ''.obs;
+  /// `where ninja` / `which ninja`
+  final ninjaOnPath = false.obs;
+  /// `where cl`（MSVC）
+  final msvcClOnPath = false.obs;
+  /// Windows 下 ninja + cl 均已就绪（用于禁用「安装编译工具」）
+  final buildToolsFullyReady = false.obs;
 
   // --- Text Controllers ---
   late final TextEditingController vocabSizeController;
@@ -251,7 +263,11 @@ class HomeController extends GetxController {
         if (!isChecking.value) checkEnvironment();
         detectCudaHome();
       }
+      if (idx == 5) {
+        detectBuildTools();
+      }
     });
+    detectBuildTools();
   }
 
   String _resolvedOutputDirPath() {
@@ -282,8 +298,11 @@ class HomeController extends GetxController {
 
   Future<void> exportLossLog() async {
     try {
-      final resolvedOutDir = repoPath.value.isEmpty ? '' : _resolvedOutputDirPath();
-      final path = _lossLogPath ??
+      final resolvedOutDir = repoPath.value.isEmpty
+          ? ''
+          : _resolvedOutputDirPath();
+      final path =
+          _lossLogPath ??
           (resolvedOutDir.isEmpty
               ? ''
               : '$resolvedOutDir${Platform.pathSeparator}$_lossLogFileName');
@@ -306,7 +325,11 @@ class HomeController extends GetxController {
 
       final destPath = '$dir${Platform.pathSeparator}$_lossLogFileName';
       await file.copy(destPath);
-      Get.snackbar('导出完成', 'loss log 已导出到: $destPath', duration: const Duration(seconds: 4));
+      Get.snackbar(
+        '导出完成',
+        'loss log 已导出到: $destPath',
+        duration: const Duration(seconds: 4),
+      );
     } catch (e) {
       Get.snackbar('导出失败', '$e');
     }
@@ -398,7 +421,8 @@ class HomeController extends GetxController {
     final candidates = <String>[];
     final localAppData = Platform.environment['LOCALAPPDATA'];
     if (localAppData != null && localAppData.isNotEmpty) {
-      final windowsApps = '$localAppData${Platform.pathSeparator}Microsoft${Platform.pathSeparator}WindowsApps';
+      final windowsApps =
+          '$localAppData${Platform.pathSeparator}Microsoft${Platform.pathSeparator}WindowsApps';
       final wingetExe = '$windowsApps${Platform.pathSeparator}winget.exe';
       if (await File(wingetExe).exists()) candidates.add(windowsApps);
     }
@@ -407,7 +431,8 @@ class HomeController extends GetxController {
       final pfApps = '$pf${Platform.pathSeparator}WindowsApps';
       if (await Directory(pfApps).exists()) {
         await for (final e in Directory(pfApps).list()) {
-          if (e is Directory && e.path.contains('Microsoft.DesktopAppInstaller')) {
+          if (e is Directory &&
+              e.path.contains('Microsoft.DesktopAppInstaller')) {
             final w = File('${e.path}${Platform.pathSeparator}winget.exe');
             if (await w.exists()) {
               candidates.add(e.path);
@@ -470,21 +495,31 @@ class HomeController extends GetxController {
     }
   }
 
+  /// 顶栏 GPU 名称。须与训练一致使用项目 venv 里的 torch，并注入 torch/lib、CUDA bin 到 PATH；
+  /// 仅用系统 `python` 会读到未装 torch 或 CPU 版，易误报「未检测到 GPU」。
+  /// 多显卡（如 NVIDIA + AMD）不影响：PyTorch CUDA 只使用 NVIDIA，AMD 不参与 CUDA 计算。
   Future<void> _detectGpu() async {
     try {
+      final py = _venvPythonPath ?? 'python';
       final result = await Process.run(
-        'python',
+        py,
         [
           '-c',
           'import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No CUDA GPU")',
         ],
+        workingDirectory: repoPath.value.isNotEmpty ? repoPath.value : null,
         runInShell: true,
+        environment: _environmentForVenvTorch(),
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
       );
       if (result.exitCode == 0) {
         final out = (result.stdout as String).trim();
-        gpuInfo.value = out.isNotEmpty ? out : 'No GPU';
+        if (out.isEmpty || out == 'No CUDA GPU') {
+          gpuInfo.value = '未检测到 GPU';
+        } else {
+          gpuInfo.value = out;
+        }
       } else {
         gpuInfo.value = '未检测到 GPU';
       }
@@ -1347,20 +1382,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       trainingLog.value = _buildLogDisplay();
 
       final py = _venvPythonPath ?? 'python';
-      // 启动训练时注入 PATH：torch/lib 含 CUDA 等 DLL，JIT 编译的 .pyd 加载时需要
-      final env = Map<String, String>.from(Platform.environment);
-      if (_venvPythonPath != null && repoPath.value.isNotEmpty) {
-        final torchLib =
-            '${repoPath.value}${Platform.pathSeparator}python_venv'
-            '${Platform.pathSeparator}Lib${Platform.pathSeparator}site-packages'
-            '${Platform.pathSeparator}torch${Platform.pathSeparator}lib';
-        final sep = Platform.pathSeparator;
-        env['PATH'] = '$torchLib$sep${env['PATH'] ?? ''}';
-        if (cudaHome.value.isNotEmpty) {
-          final cudaBin = '${cudaHome.value}${Platform.pathSeparator}bin';
-          env['PATH'] = '$cudaBin$sep${env['PATH']}';
-        }
-      }
+      final env = _environmentForVenvTorch();
       _trainingProcess = await Process.start(
         py,
         ['-u', '-X', 'utf8', '_flutter_train.py'],
@@ -1524,6 +1546,46 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         '${repoPath.value}${Platform.pathSeparator}python_venv'
         '${Platform.pathSeparator}Scripts${Platform.pathSeparator}python.exe';
     return p;
+  }
+
+  /// python_venv 下可执行目录（Windows: `Scripts`，Unix: `bin`）。`pip install ninja` 的 `ninja` 在此。
+  String? get _venvBinDirectory {
+    if (repoPath.value.isEmpty) return null;
+    final root = '${repoPath.value}${Platform.pathSeparator}python_venv';
+    if (Platform.isWindows) {
+      return '$root${Platform.pathSeparator}Scripts';
+    }
+    return '$root${Platform.pathSeparator}bin';
+  }
+
+  /// 在 PATH 最前附加 venv bin，使 `where ninja` / 训练子进程与系统终端 `activate` 后行为一致。
+  Map<String, String> _environmentWithVenvBinPrepended() {
+    final env = Map<String, String>.from(Platform.environment);
+    final bin = _venvBinDirectory;
+    if (bin != null) {
+      final sep = Platform.pathSeparator;
+      env['PATH'] = '$bin$sep${env['PATH'] ?? ''}';
+    }
+    return env;
+  }
+
+  /// 运行带 torch 的 Python 子进程（训练、GPU 检测）：PATH 含 venv、torch/lib、CUDA bin，否则可能加载不到 CUDA DLL。
+  Map<String, String> _environmentForVenvTorch() {
+    final env = Map<String, String>.from(Platform.environment);
+    if (_venvBinDirectory != null) {
+      final sep = Platform.pathSeparator;
+      env['PATH'] = '${_venvBinDirectory!}$sep${env['PATH'] ?? ''}';
+      final torchLib =
+          '${repoPath.value}${Platform.pathSeparator}python_venv'
+          '${Platform.pathSeparator}Lib${Platform.pathSeparator}site-packages'
+          '${Platform.pathSeparator}torch${Platform.pathSeparator}lib';
+      env['PATH'] = '$torchLib$sep${env['PATH']}';
+      if (cudaHome.value.isNotEmpty) {
+        final cudaBin = '${cudaHome.value}${Platform.pathSeparator}bin';
+        env['PATH'] = '$cudaBin$sep${env['PATH']}';
+      }
+    }
+    return env;
   }
 
   /// 检测 UV 是否已安装
@@ -1746,7 +1808,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       await detectCudaHome();
       final torchWheelTag = _getCudaWheelTag();
       final torchIndexUrl = 'https://download.pytorch.org/whl/$torchWheelTag';
-      installLog.value += '▶ 将安装 GPU (CUDA) torch，根据当前 CUDA 配置: $torchWheelTag\n\n';
+      installLog.value +=
+          '▶ 将安装 GPU (CUDA) torch，根据当前 CUDA 配置: $torchWheelTag\n\n';
 
       final venvPython = './python_venv/Scripts/python.exe';
       final failed = <String>[];
@@ -1850,66 +1913,164 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     }
   }
 
+  void _syncBuildToolsReadyFlag() {
+    buildToolsFullyReady.value =
+        Platform.isWindows && ninjaOnPath.value && msvcClOnPath.value;
+  }
+
+  /// 检测 ninja 与 MSVC cl.exe。优先使用「系统 PATH + 项目 venv 的 Scripts/bin」，
+  /// 以便识别仅通过 pip 装进 venv、未加入用户 PATH 的 ninja。
+  Future<void> detectBuildTools() async {
+    if (Platform.isWindows) {
+      try {
+        final env = _environmentWithVenvBinPrepended();
+        final ninjaR = await Process.run(
+          'where',
+          ['ninja'],
+          runInShell: true,
+          environment: env,
+          stdoutEncoding: _processUtf8AllowMalformed,
+          stderrEncoding: _processUtf8AllowMalformed,
+        );
+        ninjaOnPath.value = ninjaR.exitCode == 0;
+        final clR = await Process.run(
+          'where',
+          ['cl'],
+          runInShell: true,
+          environment: env,
+          stdoutEncoding: _processUtf8AllowMalformed,
+          stderrEncoding: _processUtf8AllowMalformed,
+        );
+        msvcClOnPath.value = clR.exitCode == 0;
+      } catch (_) {
+        ninjaOnPath.value = false;
+        msvcClOnPath.value = false;
+      }
+    } else {
+      try {
+        final env = _environmentWithVenvBinPrepended();
+        final ninjaR = await Process.run(
+          'which',
+          ['ninja'],
+          runInShell: true,
+          environment: env,
+          stdoutEncoding: utf8,
+          stderrEncoding: utf8,
+        );
+        ninjaOnPath.value = ninjaR.exitCode == 0;
+      } catch (_) {
+        ninjaOnPath.value = false;
+      }
+      msvcClOnPath.value = false;
+    }
+    _syncBuildToolsReadyFlag();
+  }
+
   /// 安装 CUDA 扩展编译所需的轻量工具链：
   ///   1. pip install ninja  （几 MB，构建系统）
   ///   2. winget 仅安装 MSVC C++ 编译器 + Windows SDK（~1.5 GB，无 IDE）
   Future<void> installBuildTools() async {
     if (isBuildToolsInstalling.value) return;
-    if (!wingetInstalled.value && Platform.operatingSystem == 'windows') {
-      Get.snackbar(
-        '需先安装 winget',
-        '请先安装「应用安装程序」以使用一键安装，详见设置页顶部',
-        snackPosition: SnackPosition.TOP,
-        duration: const Duration(seconds: 5),
-      );
-      return;
-    }
     isBuildToolsInstalling.value = true;
     buildToolsLog.value = '';
 
     try {
-      // ── 1. ninja ─────────────────────────────────────────────────
-      buildToolsLog.value += '▶ 安装 ninja 构建工具...\n';
-      final useUv = repoPath.value.isNotEmpty && uvInstalled.value;
-      final ninjaResult = await Process.run(
-        useUv ? 'uv' : 'pip',
-        useUv
-            ? [
-                'pip',
-                'install',
-                '--python',
-                './python_venv/Scripts/python.exe',
-                'ninja',
-              ]
-            : ['install', 'ninja', '--no-warn-script-location'],
-        workingDirectory: useUv ? repoPath.value : null,
-        runInShell: true,
-        stdoutEncoding: utf8,
-        stderrEncoding: utf8,
-      );
-      final ninjaOut = (ninjaResult.stdout as String).trim();
-      final ninjaErr = (ninjaResult.stderr as String).trim();
-      if (ninjaOut.isNotEmpty) buildToolsLog.value += '$ninjaOut\n';
-      if (ninjaErr.isNotEmpty) buildToolsLog.value += '$ninjaErr\n';
-      buildToolsLog.value += ninjaResult.exitCode == 0
-          ? '✓ ninja 安装成功\n\n'
-          : '✗ ninja 安装失败\n\n';
+      await detectBuildTools();
+      if (buildToolsFullyReady.value) {
+        buildToolsLog.value =
+            '✓ ninja 已在 PATH 中\n'
+            '✓ MSVC cl.exe 已在 PATH 中\n'
+            '编译工具已就绪，无需重复安装。\n';
+        Get.snackbar(
+          '编译工具',
+          'ninja 与 MSVC 均已安装',
+          snackPosition: SnackPosition.TOP,
+        );
+        return;
+      }
 
-      // ── 2. 检测是否已有 cl.exe ────────────────────────────────────
-      final clCheck = await Process.run(
-        'where',
-        ['cl'],
-        runInShell: true,
-        stdoutEncoding: utf8,
-        stderrEncoding: utf8,
-      );
-      if (clCheck.exitCode == 0) {
+      // ── 1. ninja（未在 PATH 时再 pip 安装）────────────────────────
+      if (!ninjaOnPath.value) {
+        buildToolsLog.value += '▶ 安装 ninja 构建工具...\n';
+        final useUv = repoPath.value.isNotEmpty && uvInstalled.value;
+        final ninjaResult = await Process.run(
+          useUv ? 'uv' : 'pip',
+          useUv
+              ? [
+                  'pip',
+                  'install',
+                  '--python',
+                  './python_venv/Scripts/python.exe',
+                  'ninja',
+                ]
+              : ['install', 'ninja', '--no-warn-script-location'],
+          workingDirectory: useUv ? repoPath.value : null,
+          runInShell: true,
+          stdoutEncoding: _processUtf8AllowMalformed,
+          stderrEncoding: _processUtf8AllowMalformed,
+        );
+        final ninjaOut = (ninjaResult.stdout as String).trim();
+        final ninjaErr = (ninjaResult.stderr as String).trim();
+        if (ninjaOut.isNotEmpty) buildToolsLog.value += '$ninjaOut\n';
+        if (ninjaErr.isNotEmpty) buildToolsLog.value += '$ninjaErr\n';
+        buildToolsLog.value += ninjaResult.exitCode == 0
+            ? '✓ ninja 安装成功\n\n'
+            : '✗ ninja 安装失败\n\n';
+        await detectBuildTools();
+        if (buildToolsFullyReady.value) {
+          buildToolsLog.value +=
+              '✓ ninja 与 MSVC 均已就绪，无需继续安装。\n';
+          Get.snackbar(
+            '编译工具',
+            'ninja 与 MSVC 均已安装',
+            snackPosition: SnackPosition.TOP,
+          );
+          return;
+        }
+      } else {
+        buildToolsLog.value +=
+            '▶ ninja\n'
+            '✓ 已在 PATH 中（跳过 pip 安装）\n\n';
+      }
+
+      // ── 2. 是否已有 cl.exe ───────────────────────────────────────
+      if (msvcClOnPath.value) {
+        final clCheck = await Process.run(
+          'where',
+          ['cl'],
+          runInShell: true,
+          stdoutEncoding: _processUtf8AllowMalformed,
+          stderrEncoding: _processUtf8AllowMalformed,
+        );
         buildToolsLog.value +=
             '✓ 已检测到 MSVC cl.exe，无需重复安装\n'
             '  ${(clCheck.stdout as String).trim()}\n';
         Get.snackbar(
           '编译工具',
           '已检测到 MSVC，无需重复安装',
+          snackPosition: SnackPosition.TOP,
+        );
+        return;
+      }
+
+      if (!wingetInstalled.value && Platform.isWindows) {
+        buildToolsLog.value +=
+            '✗ 安装 MSVC 需先安装 winget，详见设置页顶部「应用安装程序」\n';
+        Get.snackbar(
+          '需先安装 winget',
+          '请先安装「应用安装程序」以通过 winget 安装 MSVC，详见设置页顶部',
+          snackPosition: SnackPosition.TOP,
+          duration: const Duration(seconds: 5),
+        );
+        return;
+      }
+
+      if (!Platform.isWindows) {
+        buildToolsLog.value +=
+            '✗ 非 Windows 系统请自行安装 C++ 编译器（如 gcc/clang）并确保与 CUDA 配套。\n';
+        Get.snackbar(
+          '仅 Windows 支持一键安装 MSVC',
+          '请手动配置编译器',
           snackPosition: SnackPosition.TOP,
         );
         return;
@@ -1934,15 +2095,16 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         ],
         runInShell: true,
         environment: _envForWinget(),
-        stdoutEncoding: utf8,
-        stderrEncoding: utf8,
+        stdoutEncoding: _processUtf8AllowMalformed,
+        stderrEncoding: _processUtf8AllowMalformed,
       );
       final msvcOut = (msvcResult.stdout as String).trim();
       final msvcErr = (msvcResult.stderr as String).trim();
       if (msvcOut.isNotEmpty) buildToolsLog.value += '$msvcOut\n';
       if (msvcErr.isNotEmpty) buildToolsLog.value += '$msvcErr\n';
 
-      if (msvcResult.exitCode == 0) {
+      final msvcCode = msvcResult.exitCode;
+      if (msvcCode == 0) {
         buildToolsLog.value +=
             '\n✓ MSVC 编译工具安装完成！\n'
             '  请重启应用后重新运行训练\n';
@@ -1952,9 +2114,45 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 6),
         );
+      } else if (msvcCode == _wingetUpdateNotApplicable) {
+        // 已安装 Build Tools 且无新版本时 winget 仍报错码，按「已就绪」处理并复查 cl
+        buildToolsLog.value +=
+            '\n✓ winget：本机已安装 Visual Studio Build Tools，且无可用升级（退出码属正常）\n'
+            '  正在复查 cl.exe 是否在 PATH 中...\n';
+        final clAfter = await Process.run(
+          'where',
+          ['cl'],
+          runInShell: true,
+          stdoutEncoding: _processUtf8AllowMalformed,
+          stderrEncoding: _processUtf8AllowMalformed,
+        );
+        if (clAfter.exitCode == 0) {
+          buildToolsLog.value +=
+              '✓ 已检测到 cl.exe，可直接编译 CUDA 扩展\n'
+              '  ${(clAfter.stdout as String).trim()}\n';
+          Get.snackbar(
+            '编译工具就绪',
+            'MSVC 已在 PATH 中，可直接训练',
+            snackPosition: SnackPosition.TOP,
+            duration: const Duration(seconds: 5),
+          );
+        } else {
+          buildToolsLog.value +=
+              '⚠ 仍未在 PATH 中找到 cl.exe。\n'
+              '  请打开「Visual Studio Installer」→ 修改 Build Tools，\n'
+              '  确保勾选「使用 C++ 的桌面开发」或 MSVC v143 + Windows SDK，\n'
+              '  安装完成后重启本应用或从「x64 Native Tools Command Prompt」验证 where cl。\n'
+              '  手动下载： https://aka.ms/vs/17/release/vs_buildtools.exe\n';
+          Get.snackbar(
+            '需补全组件或重启',
+            'Build Tools 已登记但 cl 未进 PATH，请用安装程序补全 C++ 工作负载后重启',
+            snackPosition: SnackPosition.TOP,
+            duration: const Duration(seconds: 10),
+          );
+        }
       } else {
         buildToolsLog.value +=
-            '\n✗ winget 安装失败 (exit: ${msvcResult.exitCode})\n'
+            '\n✗ winget 安装失败 (exit: $msvcCode)\n'
             '  请手动下载 VS Build Tools（免费，仅选 C++ 编译器）：\n'
             '  https://aka.ms/vs/17/release/vs_buildtools.exe\n'
             '  安装时只勾选 "MSVC v143" 和 "Windows SDK" 两项即可\n';
@@ -1970,6 +2168,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       Get.snackbar('安装失败', '$e');
     } finally {
       isBuildToolsInstalling.value = false;
+      await detectBuildTools();
     }
   }
 
@@ -2098,6 +2297,9 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       checkLog.value += '检测异常: $e';
     } finally {
       isChecking.value = false;
+      if (Platform.isWindows) {
+        await detectBuildTools();
+      }
     }
   }
 }
