@@ -1442,7 +1442,8 @@ class HomePage extends GetView<HomeController> {
               Obx(() => _buildStatusRow(
                     'ninja',
                     controller.ninjaOnPath.value,
-                    description: '系统 PATH 或项目 python_venv/Scripts 中存在 ninja（pip 安装）',
+                    description:
+                        '系统 PATH 或仓库内 python_venv\\Scripts\\ninja.exe（pip 安装）',
                     onRetry: controller.detectBuildTools,
                   )),
               const SizedBox(height: 10),

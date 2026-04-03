@@ -495,31 +495,21 @@ class HomeController extends GetxController {
     }
   }
 
-  /// 顶栏 GPU 名称。须与训练一致使用项目 venv 里的 torch，并注入 torch/lib、CUDA bin 到 PATH；
-  /// 仅用系统 `python` 会读到未装 torch 或 CPU 版，易误报「未检测到 GPU」。
-  /// 多显卡（如 NVIDIA + AMD）不影响：PyTorch CUDA 只使用 NVIDIA，AMD 不参与 CUDA 计算。
   Future<void> _detectGpu() async {
     try {
-      final py = _venvPythonPath ?? 'python';
       final result = await Process.run(
-        py,
+        'python',
         [
           '-c',
           'import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No CUDA GPU")',
         ],
-        workingDirectory: repoPath.value.isNotEmpty ? repoPath.value : null,
         runInShell: true,
-        environment: _environmentForVenvTorch(),
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
       );
       if (result.exitCode == 0) {
         final out = (result.stdout as String).trim();
-        if (out.isEmpty || out == 'No CUDA GPU') {
-          gpuInfo.value = '未检测到 GPU';
-        } else {
-          gpuInfo.value = out;
-        }
+        gpuInfo.value = out.isNotEmpty ? out : 'No GPU';
       } else {
         gpuInfo.value = '未检测到 GPU';
       }
@@ -880,6 +870,7 @@ class HomeController extends GetxController {
     if (await trainFile.exists()) {
       repoCloned.value = true;
       repoLog.value = '✓ 仓库已就绪: ${repoPath.value}';
+      await detectBuildTools();
     } else {
       repoCloned.value = false;
       repoLog.value = '✗ 路径下未找到 train.py，请克隆仓库';
@@ -980,6 +971,7 @@ class HomeController extends GetxController {
         repoPathController.text = defaultPath;
         repoCloned.value = true;
         repoLog.value = '✓ 仓库已就绪: $defaultPath';
+        await detectBuildTools();
         return;
       }
       repoPath.value = defaultPath;
@@ -1163,6 +1155,14 @@ def _setup_msvc_env():
 if not _setup_msvc_env():
     print("[BUILD] WARNING: MSVC cl.exe not found!")
     print("[BUILD]   请在设置页点击「安装编译工具」按钮安装轻量版编译工具")
+
+# pip 安装的 ninja 在 venv 的 Scripts/bin 下；vcvars 导入的 PATH 通常不含该目录，导致 shutil.which 失败
+_venv_bin = os.path.join(r"${repoPath.value}", "python_venv", "Scripts" if os.name == "nt" else "bin")
+if os.path.isdir(_venv_bin):
+    os.environ["PATH"] = _venv_bin + os.pathsep + os.environ.get("PATH", "")
+    _ninja_venv = os.path.join(_venv_bin, "ninja.exe" if os.name == "nt" else "ninja")
+    if os.path.isfile(_ninja_venv):
+        print(f"[BUILD] ninja from venv (prepended PATH): {_ninja_venv}")
 
 # ── ninja 检测 ────────────────────────────────────────────────────
 if shutil.which("ninja"):
@@ -1382,7 +1382,24 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       trainingLog.value = _buildLogDisplay();
 
       final py = _venvPythonPath ?? 'python';
-      final env = _environmentForVenvTorch();
+      // 启动训练时注入 PATH：venv Scripts（ninja.exe）、torch/lib（DLL）、CUDA bin（nvcc）
+      final env = Map<String, String>.from(Platform.environment);
+      if (_venvPythonPath != null && repoPath.value.isNotEmpty) {
+        final sep = Platform.pathSeparator;
+        final venvScripts = Platform.isWindows
+            ? '${repoPath.value}${sep}python_venv${sep}Scripts'
+            : '${repoPath.value}${sep}python_venv${sep}bin';
+        final torchLib =
+            '${repoPath.value}${sep}python_venv'
+            '${sep}Lib${sep}site-packages'
+            '${sep}torch${sep}lib';
+        // 顺序：ninja → torch DLL → nvcc，与脚本内 vcvars 后的 prepend 一致
+        env['PATH'] = '$venvScripts$sep$torchLib$sep${env['PATH'] ?? ''}';
+        if (cudaHome.value.isNotEmpty) {
+          final cudaBin = '${cudaHome.value}${sep}bin';
+          env['PATH'] = '$cudaBin$sep${env['PATH']}';
+        }
+      }
       _trainingProcess = await Process.start(
         py,
         ['-u', '-X', 'utf8', '_flutter_train.py'],
@@ -1546,46 +1563,6 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         '${repoPath.value}${Platform.pathSeparator}python_venv'
         '${Platform.pathSeparator}Scripts${Platform.pathSeparator}python.exe';
     return p;
-  }
-
-  /// python_venv 下可执行目录（Windows: `Scripts`，Unix: `bin`）。`pip install ninja` 的 `ninja` 在此。
-  String? get _venvBinDirectory {
-    if (repoPath.value.isEmpty) return null;
-    final root = '${repoPath.value}${Platform.pathSeparator}python_venv';
-    if (Platform.isWindows) {
-      return '$root${Platform.pathSeparator}Scripts';
-    }
-    return '$root${Platform.pathSeparator}bin';
-  }
-
-  /// 在 PATH 最前附加 venv bin，使 `where ninja` / 训练子进程与系统终端 `activate` 后行为一致。
-  Map<String, String> _environmentWithVenvBinPrepended() {
-    final env = Map<String, String>.from(Platform.environment);
-    final bin = _venvBinDirectory;
-    if (bin != null) {
-      final sep = Platform.pathSeparator;
-      env['PATH'] = '$bin$sep${env['PATH'] ?? ''}';
-    }
-    return env;
-  }
-
-  /// 运行带 torch 的 Python 子进程（训练、GPU 检测）：PATH 含 venv、torch/lib、CUDA bin，否则可能加载不到 CUDA DLL。
-  Map<String, String> _environmentForVenvTorch() {
-    final env = Map<String, String>.from(Platform.environment);
-    if (_venvBinDirectory != null) {
-      final sep = Platform.pathSeparator;
-      env['PATH'] = '${_venvBinDirectory!}$sep${env['PATH'] ?? ''}';
-      final torchLib =
-          '${repoPath.value}${Platform.pathSeparator}python_venv'
-          '${Platform.pathSeparator}Lib${Platform.pathSeparator}site-packages'
-          '${Platform.pathSeparator}torch${Platform.pathSeparator}lib';
-      env['PATH'] = '$torchLib$sep${env['PATH']}';
-      if (cudaHome.value.isNotEmpty) {
-        final cudaBin = '${cudaHome.value}${Platform.pathSeparator}bin';
-        env['PATH'] = '$cudaBin$sep${env['PATH']}';
-      }
-    }
-    return env;
   }
 
   /// 检测 UV 是否已安装
@@ -1918,26 +1895,32 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         Platform.isWindows && ninjaOnPath.value && msvcClOnPath.value;
   }
 
-  /// 检测 ninja 与 MSVC cl.exe。优先使用「系统 PATH + 项目 venv 的 Scripts/bin」，
-  /// 以便识别仅通过 pip 装进 venv、未加入用户 PATH 的 ninja。
+  /// 检测 ninja（PATH）与 MSVC cl.exe（PATH）。Windows 用 `where`，其他平台仅检测 ninja。
   Future<void> detectBuildTools() async {
     if (Platform.isWindows) {
       try {
-        final env = _environmentWithVenvBinPrepended();
-        final ninjaR = await Process.run(
-          'where',
-          ['ninja'],
-          runInShell: true,
-          environment: env,
-          stdoutEncoding: _processUtf8AllowMalformed,
-          stderrEncoding: _processUtf8AllowMalformed,
-        );
-        ninjaOnPath.value = ninjaR.exitCode == 0;
+        var ninjaOk = false;
+        try {
+          final ninjaR = await Process.run(
+            'where',
+            ['ninja'],
+            runInShell: true,
+            stdoutEncoding: _processUtf8AllowMalformed,
+            stderrEncoding: _processUtf8AllowMalformed,
+          );
+          ninjaOk = ninjaR.exitCode == 0;
+        } catch (_) {}
+        if (!ninjaOk && repoPath.value.isNotEmpty) {
+          final venvNinja =
+              '${repoPath.value}${Platform.pathSeparator}python_venv'
+              '${Platform.pathSeparator}Scripts${Platform.pathSeparator}ninja.exe';
+          ninjaOk = File(venvNinja).existsSync();
+        }
+        ninjaOnPath.value = ninjaOk;
         final clR = await Process.run(
           'where',
           ['cl'],
           runInShell: true,
-          environment: env,
           stdoutEncoding: _processUtf8AllowMalformed,
           stderrEncoding: _processUtf8AllowMalformed,
         );
@@ -1948,16 +1931,24 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       }
     } else {
       try {
-        final env = _environmentWithVenvBinPrepended();
-        final ninjaR = await Process.run(
-          'which',
-          ['ninja'],
-          runInShell: true,
-          environment: env,
-          stdoutEncoding: utf8,
-          stderrEncoding: utf8,
-        );
-        ninjaOnPath.value = ninjaR.exitCode == 0;
+        var ninjaOk = false;
+        try {
+          final ninjaR = await Process.run(
+            'which',
+            ['ninja'],
+            runInShell: true,
+            stdoutEncoding: utf8,
+            stderrEncoding: utf8,
+          );
+          ninjaOk = ninjaR.exitCode == 0;
+        } catch (_) {}
+        if (!ninjaOk && repoPath.value.isNotEmpty) {
+          final venvNinja =
+              '${repoPath.value}${Platform.pathSeparator}python_venv'
+              '${Platform.pathSeparator}bin${Platform.pathSeparator}ninja';
+          ninjaOk = File(venvNinja).existsSync();
+        }
+        ninjaOnPath.value = ninjaOk;
       } catch (_) {
         ninjaOnPath.value = false;
       }
