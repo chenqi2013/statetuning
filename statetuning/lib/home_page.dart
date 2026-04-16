@@ -583,7 +583,7 @@ class HomePage extends GetView<HomeController> {
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
-                    '点击「开始训练」将生成 _flutter_train.py 脚本并在仓库目录执行，训练日志实时显示在「监控」标签页。',
+                    '点击「开始训练」会直接在仓库目录运行 train.py 并传入参数，训练日志实时显示在「监控」标签页。',
                     style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 12),
                   ),
                 ),

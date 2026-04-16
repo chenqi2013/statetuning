@@ -35,8 +35,8 @@ if 'x070' in os.environ["RWKV_MY_TESTING"]:
     CHUNK_LEN = 16
     if os.environ["RWKV_TRAIN_TYPE"] == 'state':
         if os.environ["RWKV_FLOAT_MODE"] == 'bf16':
-            flags = ['-res-usage', f'-D_N_={HEAD_SIZE}', f"-D_CHUNK_LEN_={CHUNK_LEN}", "--use_fast_math", "-O3", "-Xptxas=-O3", "--extra-device-vectorization"]
-            load(name="rwkv7_state_clampw", sources=[f'model/rwkv7/cuda/rwkv7_state_clampw.cu', 'model/rwkv7/cuda/rwkv7_state_clampw.cpp'], is_python_module=False, verbose=True, extra_cuda_cflags=flags + ["--allow-unsupported-compiler"])
+            flags = ['-res-usage', f'-D_N_={HEAD_SIZE}', f"-D_CHUNK_LEN_={CHUNK_LEN}", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization"]
+            load(name="rwkv7_state_clampw", sources=[f'model/rwkv7/cuda/rwkv7_state_clampw.cu', 'model/rwkv7/cuda/rwkv7_state_clampw.cpp'], is_python_module=False, verbose=True, extra_cuda_cflags=flags)
 
             class RWKV7_STATE_CLAMPW_CUDA_OP(torch.autograd.Function):
                 @staticmethod
@@ -71,8 +71,8 @@ if 'x070' in os.environ["RWKV_MY_TESTING"]:
                 return RWKV7_STATE_CLAMPW_CUDA_OP.apply(s0,r,w,k,v,a,b).view(B,T,HC), None
 
         elif os.environ["RWKV_FLOAT_MODE"] == 'fp32':
-            flags = ['-res-usage', f'-D_N_={HEAD_SIZE}', "-D_FP32_", f"-D_CHUNK_LEN_={CHUNK_LEN}", "--use_fast_math", "-O3", "-Xptxas=-O3", "--extra-device-vectorization"]
-            load(name="rwkv7_state_clampw", sources=[f'model/rwkv7/cuda/rwkv7_state_clampw.cu', 'model/rwkv7/cuda/rwkv7_state_clampw.cpp'], is_python_module=False, verbose=True, extra_cflags=["-D_FP32_"], extra_cuda_cflags=flags + ["--allow-unsupported-compiler"])
+            flags = ['-res-usage', f'-D_N_={HEAD_SIZE}', "-D_FP32_", f"-D_CHUNK_LEN_={CHUNK_LEN}", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization"]
+            load(name="rwkv7_state_clampw", sources=[f'model/rwkv7/cuda/rwkv7_state_clampw.cu', 'model/rwkv7/cuda/rwkv7_state_clampw.cpp'], is_python_module=False, verbose=True, extra_cflags=["-D_FP32_"], extra_cuda_cflags=flags)
 
             class RWKV7_STATE_CLAMPW_CUDA_OP(torch.autograd.Function):
                 @staticmethod
@@ -110,8 +110,8 @@ if 'x070' in os.environ["RWKV_MY_TESTING"]:
 
     else:
         if os.environ["RWKV_FLOAT_MODE"] == 'bf16':
-            flags = ['-res-usage', f'-D_N_={HEAD_SIZE}', f"-D_CHUNK_LEN_={CHUNK_LEN}", "--use_fast_math", "-O3", "-Xptxas=-O3", "--extra-device-vectorization"]
-            load(name="rwkv7_clampw", sources=[f'model/rwkv7/cuda/rwkv7_clampw.cu', 'model/rwkv7/cuda/rwkv7_clampw.cpp'], is_python_module=False, verbose=True, extra_cuda_cflags=flags + ["--allow-unsupported-compiler"])
+            flags = ['-res-usage', f'-D_N_={HEAD_SIZE}', f"-D_CHUNK_LEN_={CHUNK_LEN}", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization"]
+            load(name="rwkv7_clampw", sources=[f'model/rwkv7/cuda/rwkv7_clampw.cu', 'model/rwkv7/cuda/rwkv7_clampw.cpp'], is_python_module=False, verbose=True, extra_cuda_cflags=flags)
             class RWKV7_CLAMPW_CUDA_OP(torch.autograd.Function):
                 @staticmethod
                 def forward(ctx,r,w,k,v,a,b):
@@ -140,8 +140,8 @@ if 'x070' in os.environ["RWKV_MY_TESTING"]:
                 return RWKV7_CLAMPW_CUDA_OP.apply(r,w,k,v,a,b).view(B,T,HC)
 
         elif os.environ["RWKV_FLOAT_MODE"] == 'fp32':
-            flags = ['-res-usage', f'-D_N_={HEAD_SIZE}', "-D_FP32_", f"-D_CHUNK_LEN_={CHUNK_LEN}", "--use_fast_math", "-O3", "-Xptxas=-O3", "--extra-device-vectorization"]
-            load(name="rwkv7_clampw", sources=[f'model/rwkv7/cuda/rwkv7_clampw.cu', 'model/rwkv7/cuda/rwkv7_clampw.cpp'], is_python_module=False, verbose=True, extra_cflags=["-D_FP32_"], extra_cuda_cflags=flags + ["--allow-unsupported-compiler"])
+            flags = ['-res-usage', f'-D_N_={HEAD_SIZE}', "-D_FP32_", f"-D_CHUNK_LEN_={CHUNK_LEN}", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization"]
+            load(name="rwkv7_clampw", sources=[f'model/rwkv7/cuda/rwkv7_clampw.cu', 'model/rwkv7/cuda/rwkv7_clampw.cpp'], is_python_module=False, verbose=True, extra_cflags=["-D_FP32_"], extra_cuda_cflags=flags)
             class RWKV7_CLAMPW_CUDA_OP(torch.autograd.Function):
                 @staticmethod
                 def forward(ctx,r,w,k,v,a,b):

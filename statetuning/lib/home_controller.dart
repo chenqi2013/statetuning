@@ -495,14 +495,119 @@ class HomeController extends GetxController {
     }
   }
 
+  /// 与训练子进程一致：venv Scripts、torch/lib、CUDA bin，便于子进程加载 GPU 相关 DLL。
+  Map<String, String> _envWithTorchRuntime() {
+    final env = Map<String, String>.from(Platform.environment);
+    if (_venvPythonPath == null || repoPath.value.isEmpty) return env;
+    final sep = Platform.pathSeparator;
+    final venvScripts = Platform.isWindows
+        ? '${repoPath.value}${sep}python_venv${sep}Scripts'
+        : '${repoPath.value}${sep}python_venv${sep}bin';
+    final torchLib =
+        '${repoPath.value}${sep}python_venv'
+        '${sep}Lib${sep}site-packages'
+        '${sep}torch${sep}lib';
+    env['PATH'] = '$venvScripts$sep$torchLib$sep${env['PATH'] ?? ''}';
+    if (cudaHome.value.isNotEmpty) {
+      final cudaBin = '${cudaHome.value}${sep}bin';
+      env['PATH'] = '$cudaBin$sep${env['PATH']}';
+    }
+    return env;
+  }
+
+  String? _findAnyVcvarsallPathSync() {
+    final roots = [
+      Directory(r'C:\Program Files\Microsoft Visual Studio'),
+      Directory(r'C:\Program Files (x86)\Microsoft Visual Studio'),
+    ];
+    for (final root in roots) {
+      if (!root.existsSync()) continue;
+      final yearDirs = root.listSync().whereType<Directory>().toList()
+        ..sort((a, b) => b.path.compareTo(a.path));
+      for (final yearDir in yearDirs) {
+        final editionDirs = yearDir.listSync().whereType<Directory>().toList()
+          ..sort((a, b) => b.path.compareTo(a.path));
+        for (final editionDir in editionDirs) {
+          final candidate = File(
+            '${editionDir.path}${Platform.pathSeparator}VC'
+            '${Platform.pathSeparator}Auxiliary${Platform.pathSeparator}Build'
+            '${Platform.pathSeparator}vcvarsall.bat',
+          );
+          if (candidate.existsSync()) return candidate.path;
+        }
+      }
+    }
+    return null;
+  }
+
+  String _cmdQuote(String value) {
+    return '"${value.replaceAll('"', '""')}"';
+  }
+
+  Future<void> _prepareWindowsCudaBuild() async {
+    if (!Platform.isWindows || repoPath.value.isEmpty) return;
+
+    final sep = Platform.pathSeparator;
+    final rwkvop = File(
+      '${repoPath.value}${sep}model${sep}rwkv7${sep}operator${sep}rwkvop.py',
+    );
+    if (await rwkvop.exists()) {
+      final original = await rwkvop.readAsString();
+      var updated = original;
+      final changes = <String>[];
+
+      if (updated.contains('"-Xptxas -O3"') ||
+          updated.contains("'-Xptxas -O3'")) {
+        updated = updated
+            .replaceAll('"-Xptxas -O3"', '"-Xptxas=-O3"')
+            .replaceAll("'-Xptxas -O3'", "'-Xptxas=-O3'");
+        changes.add('-Xptxas -O3 -> -Xptxas=-O3');
+      }
+      if (!updated.contains('--allow-unsupported-compiler')) {
+        updated = updated.replaceAll(
+          'extra_cuda_cflags=flags)',
+          'extra_cuda_cflags=flags + ["--allow-unsupported-compiler"])',
+        );
+        changes.add('add --allow-unsupported-compiler');
+      }
+
+      if (updated != original) {
+        await rwkvop.writeAsString(updated);
+        _appendLogData('[BUILD] 已修复 rwkvop.py: ${changes.join(', ')}\n');
+      }
+    }
+
+    final cacheRoot = Directory(
+      '${Platform.environment['LOCALAPPDATA'] ?? ''}'
+      '${sep}torch_extensions${sep}torch_extensions${sep}Cache',
+    );
+    if (await cacheRoot.exists()) {
+      await for (final entity in cacheRoot.list(recursive: true)) {
+        if (entity is Directory &&
+            (entity.path.endsWith('${sep}rwkv7_state_clampw') ||
+                entity.path.endsWith('${sep}rwkv7_clampw'))) {
+          await entity.delete(recursive: true);
+          _appendLogData('[BUILD] 已清理旧编译缓存: ${entity.path}\n');
+        }
+      }
+    }
+  }
+
   Future<void> _detectGpu() async {
     try {
+      var py = _venvPythonPath ?? 'python';
+      if (py != 'python' && !File(py).existsSync()) {
+        py = 'python';
+      }
       final result = await Process.run(
-        'python',
+        py,
         [
           '-c',
           'import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No CUDA GPU")',
         ],
+        workingDirectory:
+            repoPath.value.isNotEmpty ? repoPath.value : null,
+        environment: _envWithTorchRuntime(),
         runInShell: true,
         stdoutEncoding: utf8,
         stderrEncoding: utf8,
@@ -1047,6 +1152,7 @@ class HomeController extends GetxController {
   /// Generates a complete, self-contained Python training script based on the
   /// user's current configuration. The script mirrors train.py from the repo
   /// but with all config values injected by Flutter.
+  // ignore: unused_element
   String _buildTrainingScript() {
     final p = precisionString;
     final cudaHomeStr = cudaHome.value;
@@ -1362,6 +1468,12 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       Get.snackbar('错误', '请设置训练数据路径 (.jsonl)');
       return;
     }
+    final trainPyPath =
+        '${repoPath.value}${Platform.pathSeparator}train.py';
+    if (!File(trainPyPath).existsSync()) {
+      Get.snackbar('错误', '仓库目录下未找到 train.py');
+      return;
+    }
 
     isTraining.value = true;
     status.value = '训练中';
@@ -1375,38 +1487,101 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     currentTabIndex.value = 3;
 
     try {
-      final scriptPath =
-          '${repoPath.value}${Platform.pathSeparator}_flutter_train.py';
-      await File(scriptPath).writeAsString(_buildTrainingScript());
-      _appendLogData('✓ 训练脚本已生成: $scriptPath\n${'=' * 50}\n\n');
-      trainingLog.value = _buildLogDisplay();
-
+      await _prepareWindowsCudaBuild();
       final py = _venvPythonPath ?? 'python';
-      // 启动训练时注入 PATH：venv Scripts（ninja.exe）、torch/lib（DLL）、CUDA bin（nvcc）
-      final env = Map<String, String>.from(Platform.environment);
-      if (_venvPythonPath != null && repoPath.value.isNotEmpty) {
-        final sep = Platform.pathSeparator;
-        final venvScripts = Platform.isWindows
-            ? '${repoPath.value}${sep}python_venv${sep}Scripts'
-            : '${repoPath.value}${sep}python_venv${sep}bin';
-        final torchLib =
-            '${repoPath.value}${sep}python_venv'
-            '${sep}Lib${sep}site-packages'
-            '${sep}torch${sep}lib';
-        // 顺序：ninja → torch DLL → nvcc，与脚本内 vcvars 后的 prepend 一致
-        env['PATH'] = '$venvScripts$sep$torchLib$sep${env['PATH'] ?? ''}';
-        if (cudaHome.value.isNotEmpty) {
-          final cudaBin = '${cudaHome.value}${sep}bin';
-          env['PATH'] = '$cudaBin$sep${env['PATH']}';
-        }
-      }
-      _trainingProcess = await Process.start(
-        py,
-        ['-u', '-X', 'utf8', '_flutter_train.py'],
-        workingDirectory: repoPath.value,
-        environment: env,
-        runInShell: true,
+      final trainPyText = await File(trainPyPath).readAsString();
+      final supportsNumSteps = trainPyText.contains('--num_steps');
+      final env = _envWithTorchRuntime();
+      env['VSLANG'] = '1033';
+      final args = [
+        '-u',
+        '-X',
+        'utf8',
+        'train.py',
+        '--load_model',
+        modelPath.value,
+        '--data_path',
+        dataPath.value,
+        '--output_dir',
+        outputDir.value,
+        '--vocab_size',
+        '${vocabSize.value}',
+        '--n_embd',
+        '${nEmbd.value}',
+        '--n_layer',
+        '${nLayer.value}',
+        '--precision',
+        precisionString,
+        '--batch_size',
+        '${batchSize.value}',
+        if (supportsNumSteps) ...[
+          '--num_steps',
+          '${numSteps.value}',
+        ],
+        '--num_epochs',
+        '${numEpochs.value}',
+        '--learning_rate',
+        learningRate.value,
+        '--ctx_len',
+        '${ctxLen.value}',
+      ];
+      final windowsHint = Platform.isWindows
+          ? 'Windows: 训练前将自动调用 vcvarsall.bat 初始化 MSVC 环境。\n'
+          : '';
+      _appendLogData(
+        '✓ 直接运行仓库 train.py\n'
+        '命令: $py ${args.join(' ')}\n'
+        '$windowsHint'
+        '说明: ${supportsNumSteps ? "已传入 num_steps 参数。" : "当前仓库 train.py 不支持 num_steps，已忽略该 UI 字段。"}\n'
+        '${'=' * 50}\n\n',
       );
+      trainingLog.value = _buildLogDisplay();
+      if (Platform.isWindows) {
+        final vcvarsall = _findAnyVcvarsallPathSync();
+        if (vcvarsall != null) {
+          final launcherPath =
+              '${repoPath.value}${Platform.pathSeparator}_flutter_train.cmd';
+          final launcherContent = [
+            '@echo off',
+            'set "VSLANG=1033"',
+            'call ${_cmdQuote(vcvarsall)} x64',
+            'if errorlevel 1 exit /b %errorlevel%',
+            '${_cmdQuote(py)} ${args.map(_cmdQuote).join(' ')}',
+          ].join('\r\n');
+          await File(launcherPath).writeAsString(launcherContent);
+          _appendLogData(
+            '[BUILD] Windows 启动器: $launcherPath\n',
+          );
+          trainingLog.value = _buildLogDisplay();
+          _trainingProcess = await Process.start(
+            launcherPath,
+            const [],
+            workingDirectory: repoPath.value,
+            environment: env,
+            runInShell: true,
+          );
+        } else {
+          _appendLogData(
+            '[BUILD] WARNING: 未找到 vcvarsall.bat，改为直接启动 train.py\n',
+          );
+          trainingLog.value = _buildLogDisplay();
+          _trainingProcess = await Process.start(
+            py,
+            args,
+            workingDirectory: repoPath.value,
+            environment: env,
+            runInShell: true,
+          );
+        }
+      } else {
+        _trainingProcess = await Process.start(
+          py,
+          args,
+          workingDirectory: repoPath.value,
+          environment: env,
+          runInShell: true,
+        );
+      }
 
       // 定时器每 1000ms 刷新一次日志显示，大幅降低 UI 重建频率
       _logFlushTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
