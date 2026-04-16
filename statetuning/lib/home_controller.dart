@@ -76,9 +76,7 @@ class HomeController extends GetxController {
   // step → loss，用于去重（每步 tqdm 会打两次）
   final _lossMap = <int, double>{};
   final lossHistory = <double>[].obs;
-  final _lossLogFileName = 'loss_log.txt';
-  String? _lossLogPath;
-  final lossLogReady = false.obs;
+  final _trainLossFileName = 'train_loss.jsonl';
   Process? _trainingProcess;
   // 日志缓冲区 + 定时刷新，避免高频 stdout 触发过多 UI 重建
   // _logLines: 已完成的行列表；_logCurrentLine: 当前未换行的内容
@@ -276,45 +274,58 @@ class HomeController extends GetxController {
         : outputDir.value;
   }
 
-  Future<void> _initLossLogFile() async {
-    // 只有在训练启动后，repoPath/outputDir 才应当可用
-    if (repoPath.value.isEmpty) return;
+  String _trainLossJsonlPath() {
     final resolvedOutDir = _resolvedOutputDirPath();
-    final dir = Directory(resolvedOutDir);
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    _lossLogPath = '$resolvedOutDir${Platform.pathSeparator}$_lossLogFileName';
-    final header = 'step,loss\n';
-    await File(_lossLogPath!).writeAsString(header, mode: FileMode.write);
-    lossLogReady.value = true;
+    return '$resolvedOutDir${Platform.pathSeparator}$_trainLossFileName';
   }
 
-  Future<void> _appendLossLogLine(int step, double loss) async {
-    if (_lossLogPath == null) return;
-    final line = '${step},${loss.toStringAsFixed(6)}\n';
-    await File(_lossLogPath!).writeAsString(line, mode: FileMode.append);
+  Future<void> _loadLossHistoryFromTrainLossJsonl() async {
+    try {
+      final file = File(_trainLossJsonlPath());
+      if (!await file.exists()) return;
+
+      final lines = await file.readAsLines();
+      final points = <MapEntry<int, double>>[];
+      for (final raw in lines) {
+        final line = raw.trim();
+        if (line.isEmpty) continue;
+        final decoded = jsonDecode(line);
+        if (decoded is! Map) continue;
+        final step = switch (decoded['step']) {
+          int v => v,
+          num v => v.toInt(),
+          String v => int.tryParse(v) ?? -1,
+          _ => -1,
+        };
+        final loss = switch (decoded['loss']) {
+          num v => v.toDouble(),
+          String v => double.tryParse(v) ?? -1.0,
+          _ => -1.0,
+        };
+        if (step >= 0 && loss >= 0) {
+          points.add(MapEntry(step, loss));
+        }
+      }
+      points.sort((a, b) => a.key.compareTo(b.key));
+      _lossMap
+        ..clear()
+        ..addEntries(points);
+      lossHistory.value = points.map((e) => e.value).toList();
+    } catch (_) {}
   }
 
   Future<void> exportLossLog() async {
     try {
-      final resolvedOutDir = repoPath.value.isEmpty
-          ? ''
-          : _resolvedOutputDirPath();
-      final path =
-          _lossLogPath ??
-          (resolvedOutDir.isEmpty
-              ? ''
-              : '$resolvedOutDir${Platform.pathSeparator}$_lossLogFileName');
+      final path = repoPath.value.isEmpty ? '' : _trainLossJsonlPath();
 
       if (path.isEmpty) {
-        Get.snackbar('提示', '未找到 loss log 文件');
+        Get.snackbar('提示', '未找到 train_loss.jsonl 文件');
         return;
       }
 
       final file = File(path);
       if (!await file.exists()) {
-        Get.snackbar('提示', '未找到 loss log 文件（请先运行训练并生成 loss 曲线）');
+        Get.snackbar('提示', '未找到 train_loss.jsonl 文件（请先运行训练）');
         return;
       }
 
@@ -323,11 +334,11 @@ class HomeController extends GetxController {
       );
       if (dir == null || dir.isEmpty) return;
 
-      final destPath = '$dir${Platform.pathSeparator}$_lossLogFileName';
+      final destPath = '$dir${Platform.pathSeparator}$_trainLossFileName';
       await file.copy(destPath);
       Get.snackbar(
         '导出完成',
-        'loss log 已导出到: $destPath',
+        'train_loss.jsonl 已导出到: $destPath',
         duration: const Duration(seconds: 4),
       );
     } catch (e) {
@@ -1482,8 +1493,6 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     _logCurrentLine = '';
     _lossMap.clear();
     lossHistory.value = [];
-    lossLogReady.value = false;
-    await _initLossLogFile();
     currentTabIndex.value = 3;
 
     try {
@@ -1599,7 +1608,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       _trainingProcess!.stdout.transform(dec.decoder).listen(onData);
       _trainingProcess!.stderr.transform(dec.decoder).listen(onData);
 
-      _trainingProcess!.exitCode.then((code) {
+      _trainingProcess!.exitCode.then((code) async {
         _logFlushTimer?.cancel();
         _logFlushTimer = null;
         // 最终刷新一次，确保末尾日志完整显示
@@ -1612,6 +1621,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         isTraining.value = false;
         status.value = code == 0 ? '训练完成' : '训练异常';
         if (code == 0) {
+          await _loadLossHistoryFromTrainLossJsonl();
           Get.snackbar('训练完成', '模型已保存到 ${outputDir.value}');
           refreshOutputFiles();
         } else {
@@ -1677,12 +1687,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       final step = int.tryParse(m.group(1)!) ?? 0;
       final loss = double.tryParse(m.group(2)!) ?? 0;
       if (step > 0 && loss > 0) {
-        final alreadyHaveStep = _lossMap.containsKey(step);
         _lossMap[step] = loss;
-        // 每个 step 只写入一次，避免日志暴涨
-        if (!alreadyHaveStep) {
-          unawaited(_appendLossLogLine(step, loss));
-        }
         changed = true;
       }
     }

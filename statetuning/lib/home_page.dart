@@ -636,7 +636,7 @@ class HomePage extends GetView<HomeController> {
                   child: ElevatedButton.icon(
                     onPressed: controller.exportLossLog,
                     icon: const Icon(Icons.file_present, size: 18),
-                    label: const Text('导出 loss log'),
+                    label: const Text('导出 train_loss.jsonl'),
                     style: _btnStyle(const Color(0xFF3B82F6), compact: true),
                   ),
                 );
