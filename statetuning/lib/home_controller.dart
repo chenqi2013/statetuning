@@ -75,14 +75,18 @@ class HomeController extends GetxController {
   final trainingLog = ''.obs;
   // step → loss，用于去重（每步 tqdm 会打两次）
   final _lossMap = <int, double>{};
+  final _lossWrittenSteps = <int>{};
   final lossHistory = <double>[].obs;
+  final _lossLogFileName = 'loss_log.txt';
   final _trainLossFileName = 'train_loss.jsonl';
+  String? _lossLogPath;
   Process? _trainingProcess;
   // 日志缓冲区 + 定时刷新，避免高频 stdout 触发过多 UI 重建
   // _logLines: 已完成的行列表；_logCurrentLine: 当前未换行的内容
   // 通过正确处理 \r（tqdm 覆写进度条），避免日志无限膨胀
   final _logLines = <String>[];
   String _logCurrentLine = '';
+  String _lossParseBuffer = '';
   Timer? _logFlushTimer;
 
   // --- Repo State ---
@@ -272,6 +276,26 @@ class HomeController extends GetxController {
     return outputDir.value.startsWith('./') || outputDir.value == '.'
         ? '${repoPath.value}${Platform.pathSeparator}${outputDir.value}'
         : outputDir.value;
+  }
+
+  Future<void> _initLossLogFile() async {
+    if (repoPath.value.isEmpty) return;
+    final resolvedOutDir = _resolvedOutputDirPath();
+    final dir = Directory(resolvedOutDir);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    _lossLogPath = '$resolvedOutDir${Platform.pathSeparator}$_lossLogFileName';
+    await File(_lossLogPath!).writeAsString(
+      'step,loss\n',
+      mode: FileMode.write,
+    );
+  }
+
+  Future<void> _appendLossLogLine(int step, double loss) async {
+    if (_lossLogPath == null) return;
+    final line = '$step,${loss.toStringAsFixed(6)}\n';
+    await File(_lossLogPath!).writeAsString(line, mode: FileMode.append);
   }
 
   String _trainLossJsonlPath() {
@@ -1491,8 +1515,11 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     trainingLog.value = '';
     _logLines.clear();
     _logCurrentLine = '';
+    _lossParseBuffer = '';
     _lossMap.clear();
+    _lossWrittenSteps.clear();
     lossHistory.value = [];
+    await _initLossLogFile();
     currentTabIndex.value = 3;
 
     try {
@@ -1502,6 +1529,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       final supportsNumSteps = trainPyText.contains('--num_steps');
       final env = _envWithTorchRuntime();
       env['VSLANG'] = '1033';
+      env['TQDM_MININTERVAL'] = '0';
+      env['TQDM_MINITERS'] = '1';
       final args = [
         '-u',
         '-X',
@@ -1548,6 +1577,17 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       if (Platform.isWindows) {
         final vcvarsall = _findAnyVcvarsallPathSync();
         if (vcvarsall != null) {
+          final sep = Platform.pathSeparator;
+          final venvScripts =
+              '${repoPath.value}${sep}python_venv${sep}Scripts';
+          final torchLib =
+              '${repoPath.value}${sep}python_venv${sep}Lib${sep}site-packages'
+              '${sep}torch${sep}lib';
+          final cmdPathPrefix = [
+            if (cudaHome.value.isNotEmpty) '${cudaHome.value}${sep}bin',
+            torchLib,
+            venvScripts,
+          ].join(';');
           final launcherPath =
               '${repoPath.value}${Platform.pathSeparator}_flutter_train.cmd';
           final launcherContent = [
@@ -1555,6 +1595,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             'set "VSLANG=1033"',
             'call ${_cmdQuote(vcvarsall)} x64',
             'if errorlevel 1 exit /b %errorlevel%',
+            'set "PATH=$cmdPathPrefix;%PATH%"',
             '${_cmdQuote(py)} ${args.map(_cmdQuote).join(' ')}',
           ].join('\r\n');
           await File(launcherPath).writeAsString(launcherContent);
@@ -1681,13 +1722,23 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   /// 从 tqdm 日志片段中提取 (step, loss) 并更新 lossHistory。
   /// tqdm 格式: | 12/1000 [..., loss=2.3456]
   void _parseLoss(String data) {
+    _lossParseBuffer += data;
+    if (_lossParseBuffer.length > 8000) {
+      _lossParseBuffer =
+          _lossParseBuffer.substring(_lossParseBuffer.length - 8000);
+    }
     final re = RegExp(r'\|\s*(\d+)/\d+.*?loss=([\d.]+)');
     bool changed = false;
-    for (final m in re.allMatches(data)) {
-      final step = int.tryParse(m.group(1)!) ?? 0;
+    for (final m in re.allMatches(_lossParseBuffer)) {
+      final shownStep = int.tryParse(m.group(1)!) ?? 0;
       final loss = double.tryParse(m.group(2)!) ?? 0;
-      if (step > 0 && loss > 0) {
+      // tqdm 显示的进度通常是 1-based，而 train_loss.jsonl 的 step 是 0-based。
+      final step = shownStep > 0 ? shownStep - 1 : 0;
+      if (step >= 0 && loss > 0) {
         _lossMap[step] = loss;
+        if (_lossWrittenSteps.add(step)) {
+          unawaited(_appendLossLogLine(step, loss));
+        }
         changed = true;
       }
     }
