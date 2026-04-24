@@ -32,6 +32,8 @@ class HomePage extends GetView<HomeController> {
                       return _buildExportTab();
                     case 5:
                       return _buildSettingsTab();
+                    case 6:
+                      return _buildTestTab();
                     default:
                       return _buildModelTab();
                   }
@@ -59,7 +61,7 @@ class HomePage extends GetView<HomeController> {
                     Text(
                       '正在初始化仓库...',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 16,
                       ),
                     ),
@@ -135,12 +137,12 @@ class HomePage extends GetView<HomeController> {
 
   // ─── Tab Bar ─────────────────────────────────────────────────────────────────
 
-  /// 内容索引 -> 标签。0=模型 1=数据 2=训练 3=监控 4=导出 5=设置
-  static const _tabLabels = ['模型', '数据', '训练', '监控', '导出', '设置'];
+  /// 内容索引 -> 标签。0=模型 1=数据 2=训练 3=监控 4=导出 5=设置 6=测试
+  static const _tabLabels = ['模型', '数据', '训练', '监控', '导出', '设置', '测试'];
 
   /// 环境未就绪时设置放第一位，就绪后放最后
   List<int> _tabOrder() =>
-      controller.envReady.value ? [0, 1, 2, 3, 4, 5] : [5, 0, 1, 2, 3, 4];
+      controller.envReady.value ? [0, 1, 2, 3, 4, 5, 6] : [5, 0, 1, 2, 3, 4, 6];
 
   Widget _buildTabBar() {
     return Obx(
@@ -972,6 +974,234 @@ class HomePage extends GetView<HomeController> {
                     style: const TextStyle(
                         color: Color(0xFF6B7280), fontSize: 11),
                     overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Tab 6: 测试 ─────────────────────────────────────────────────────────────
+
+  Widget _buildTestTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionCard(
+            title: '模型加载测试',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _labeledField(
+                  '.pth 模型文件',
+                  controller.testModelPathController,
+                  hint: '选择 RWKV 模型文件',
+                  onBrowse: controller.pickTestModelFile,
+                  browseIcon: Icons.file_open,
+                ),
+                const SizedBox(height: 12),
+                _labeledField(
+                  'Tokenizer 文件',
+                  controller.testTokenizerPathController,
+                  hint: '例如 rwkv_vocab_v20230424.txt',
+                  onBrowse: controller.pickTestTokenizerFile,
+                  browseIcon: Icons.file_open,
+                ),
+                const SizedBox(height: 12),
+                _labeledField(
+                  'State 文件（暂不支持加载）',
+                  controller.testStatePathController,
+                  hint: '.state（当前仅展示入口）',
+                  onBrowse: controller.pickTestStateFile,
+                  browseIcon: Icons.file_open,
+                ),
+                const SizedBox(height: 12),
+                Obx(
+                  () => Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: controller.isRwkvLoading.value
+                              ? null
+                              : controller.loadRwkvTestModel,
+                          icon: controller.isRwkvLoading.value
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.play_circle_outline),
+                          label: Text(
+                            controller.isRwkvLoading.value ? '加载中...' : '加载模型',
+                          ),
+                          style: _btnStyle(const Color(0xFF3B82F6)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: controller.clearRwkvChat,
+                          icon: const Icon(Icons.clear_all),
+                          label: const Text('清空聊天'),
+                          style: _btnStyle(const Color(0xFF6B7280)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Obx(
+                  () => Text(
+                    '状态: ${controller.rwkvStatus.value}',
+                    style: const TextStyle(color: Color(0xFFB0B5BC), fontSize: 13),
+                  ),
+                ),
+                Obx(
+                  () => controller.isRwkvLoading.value
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: LinearProgressIndicator(
+                            value: controller.rwkvLoadProgress.value > 0
+                                ? controller.rwkvLoadProgress.value
+                                : null,
+                            backgroundColor: const Color(0xFF3A3F47),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              Color(0xFF3B82F6),
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          _sectionCard(
+            title: '聊天测试窗口',
+            child: Column(
+              children: [
+                Obx(
+                  () => Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(minHeight: 260, maxHeight: 420),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1D21),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF3A3F47)),
+                    ),
+                    child: controller.rwkvMessages.isEmpty
+                        ? const Center(
+                            child: Text(
+                              '加载模型后，在下方输入 prompt 并发送',
+                              style: TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: controller.rwkvMessages.length,
+                            itemBuilder: (context, index) {
+                              final m = controller.rwkvMessages[index];
+                              final isUser = m['role'] == 'user';
+                              return Align(
+                                alignment: isUser
+                                    ? Alignment.centerRight
+                                    : Alignment.centerLeft,
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  constraints: const BoxConstraints(maxWidth: 680),
+                                  decoration: BoxDecoration(
+                                    color: isUser
+                                        ? const Color(0xFF3B82F6).withValues(alpha: 0.2)
+                                        : const Color(0xFF252830),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xFF3A3F47)),
+                                  ),
+                                  child: Text(
+                                    m['text'] ?? '',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: controller.testPromptController,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: '输入 prompt，例如：介绍一下 RWKV 的优势',
+                          hintStyle: const TextStyle(
+                            color: Color(0xFF4B5563),
+                            fontSize: 13,
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFF1A1D21),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFF3A3F47)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFF3B82F6)),
+                          ),
+                        ),
+                        onSubmitted: (_) => controller.sendRwkvPrompt(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Obx(
+                      () => ElevatedButton.icon(
+                        onPressed: controller.isRwkvGenerating.value
+                            ? null
+                            : controller.sendRwkvPrompt,
+                        icon: controller.isRwkvGenerating.value
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.send),
+                        label: Text(
+                          controller.isRwkvGenerating.value ? '生成中...' : '发送',
+                        ),
+                        style: _btnStyle(const Color(0xFF22C55E), compact: true),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Obx(
+                  () => _logBox(
+                    controller.rwkvTestLog.value,
+                    minHeight: 80,
+                    placeholder: '运行日志将在这里显示',
+                  ),
+                ),
               ],
             ),
           ),

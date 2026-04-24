@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:rwkv_mobile_flutter/rwkv.dart';
 
 enum TrainingPrecision { bf16, fp16, fp32 }
 
@@ -135,6 +137,31 @@ class HomeController extends GetxController {
   final checkLog = ''.obs;
   bool _hasGuidedToSettings = false;
 
+  // --- RWKV Test (模型聊天测试) ---
+  final testModelPath = ''.obs;
+  final testTokenizerPath = ''.obs;
+  final testStatePath = ''.obs; // 占位：当前插件暂不接 state
+  final isRwkvRuntimeReady = false.obs;
+  final isRwkvLoading = false.obs;
+  final rwkvLoadProgress = 0.0.obs;
+  final isRwkvGenerating = false.obs;
+  final rwkvStatus = '未初始化'.obs;
+  final rwkvTestLog = ''.obs;
+  final rwkvMessages = <Map<String, String>>[].obs; // {role, text}
+  late final TextEditingController testPromptController;
+  late final TextEditingController testModelPathController;
+  late final TextEditingController testTokenizerPathController;
+  late final TextEditingController testStatePathController;
+  final RWKVMobile _rwkvMobile = RWKVMobile();
+  ReceivePort? _rwkvReceivePort;
+  SendPort? _rwkvSendPort;
+  StreamSubscription<dynamic>? _rwkvReceiveSub;
+  Timer? _rwkvPollTimer;
+  Completer<void>? _rwkvLoadCompleter;
+  Completer<String>? _rwkvGenerateCompleter;
+  int? _rwkvModelId;
+  String _rwkvCurrentPrompt = '';
+
   // --- UV + 项目内虚拟环境 (替代系统 Python/pip，依赖装项目目录) ---
   final uvInstalled = false.obs;
   final isUvInstalling = false.obs;
@@ -147,10 +174,13 @@ class HomeController extends GetxController {
   // --- Build Tools (MSVC + ninja) ---
   final isBuildToolsInstalling = false.obs;
   final buildToolsLog = ''.obs;
+
   /// `where ninja` / `which ninja`
   final ninjaOnPath = false.obs;
+
   /// `where cl`（MSVC）
   final msvcClOnPath = false.obs;
+
   /// Windows 下 ninja + cl 均已就绪（用于禁用「安装编译工具」）
   final buildToolsFullyReady = false.obs;
 
@@ -191,6 +221,12 @@ class HomeController extends GetxController {
     );
     learningRateController = TextEditingController(text: learningRate.value);
     cudaHomeController = TextEditingController(text: cudaHome.value);
+    testPromptController = TextEditingController();
+    testModelPathController = TextEditingController(text: testModelPath.value);
+    testTokenizerPathController = TextEditingController(
+      text: testTokenizerPath.value,
+    );
+    testStatePathController = TextEditingController(text: testStatePath.value);
 
     vocabSizeController.addListener(() {
       final v = int.tryParse(vocabSizeController.text);
@@ -246,6 +282,15 @@ class HomeController extends GetxController {
     cudaHomeController.addListener(
       () => cudaHome.value = cudaHomeController.text,
     );
+    testModelPathController.addListener(
+      () => testModelPath.value = testModelPathController.text,
+    );
+    testTokenizerPathController.addListener(
+      () => testTokenizerPath.value = testTokenizerPathController.text,
+    );
+    testStatePathController.addListener(
+      () => testStatePath.value = testStatePathController.text,
+    );
 
     detectWinget();
     detectNvidiaDriver();
@@ -286,10 +331,9 @@ class HomeController extends GetxController {
       await dir.create(recursive: true);
     }
     _lossLogPath = '$resolvedOutDir${Platform.pathSeparator}$_lossLogFileName';
-    await File(_lossLogPath!).writeAsString(
-      'step,loss\n',
-      mode: FileMode.write,
-    );
+    await File(
+      _lossLogPath!,
+    ).writeAsString('step,loss\n', mode: FileMode.write);
   }
 
   Future<void> _appendLossLogLine(int step, double loss) async {
@@ -386,18 +430,270 @@ class HomeController extends GetxController {
       numEpochsController,
       learningRateController,
       cudaHomeController,
+      testPromptController,
+      testModelPathController,
+      testTokenizerPathController,
+      testStatePathController,
     ]) {
       c.dispose();
     }
     _trainingProcess?.kill();
     _logFlushTimer?.cancel();
     _modelDetectTimer?.cancel();
+    _rwkvPollTimer?.cancel();
+    _rwkvReceiveSub?.cancel();
+    _rwkvReceivePort?.close();
     super.onClose();
   }
 
   void setTabIndex(int index) => currentTabIndex.value = index;
 
   void setPrecision(TrainingPrecision p) => precision.value = p;
+
+  Future<void> pickTestModelFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      dialogTitle: '选择 RWKV 模型文件 (.pth)',
+      type: FileType.custom,
+      allowedExtensions: const ['pth'],
+    );
+    final path = result?.files.single.path;
+    if (path == null) return;
+    testModelPathController.text = path;
+
+    // 自动探测 tokenizer（同目录常见文件名）
+    final sep = Platform.pathSeparator;
+    final dir = File(path).parent.path;
+    const candidates = [
+      'rwkv_vocab_v20230424.txt',
+      'tokenizer.json',
+      'vocab.txt',
+    ];
+    for (final name in candidates) {
+      final p = '$dir$sep$name';
+      if (await File(p).exists()) {
+        testTokenizerPathController.text = p;
+        break;
+      }
+    }
+  }
+
+  Future<void> pickTestTokenizerFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      dialogTitle: '选择 tokenizer 文件',
+      type: FileType.custom,
+      allowedExtensions: const ['txt', 'json', 'model'],
+    );
+    final path = result?.files.single.path;
+    if (path != null) testTokenizerPathController.text = path;
+  }
+
+  Future<void> pickTestStateFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      dialogTitle: '选择 state 文件（暂不支持加载）',
+      type: FileType.custom,
+      allowedExtensions: const ['state'],
+    );
+    final path = result?.files.single.path;
+    if (path != null) {
+      testStatePathController.text = path;
+      Get.snackbar('提示', '当前测试仅支持 .pth，state 文件暂未接入');
+    }
+  }
+
+  void _appendRwkvLog(String line) {
+    final next = '${rwkvTestLog.value}$line\n';
+    final lines = const LineSplitter().convert(next);
+    rwkvTestLog.value = lines.length > 200
+        ? '${lines.sublist(lines.length - 200).join('\n')}\n'
+        : next;
+  }
+
+  Future<void> _ensureRwkvRuntime() async {
+    if (_rwkvSendPort != null) return;
+    final rootToken = RootIsolateToken.instance;
+    if (rootToken == null) {
+      throw Exception('RootIsolateToken 不可用，无法启动 RWKV runtime');
+    }
+
+    _rwkvReceivePort = ReceivePort();
+    _rwkvReceiveSub = _rwkvReceivePort!.listen(_handleRwkvMessage);
+    await _rwkvMobile.runIsolate(
+      StartOptions(
+        sendPort: _rwkvReceivePort!.sendPort,
+        rootIsolateToken: rootToken,
+      ),
+    );
+    final start = DateTime.now();
+    while (_rwkvSendPort == null) {
+      if (DateTime.now().difference(start) > const Duration(seconds: 8)) {
+        throw Exception('RWKV runtime 启动超时');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    }
+    isRwkvRuntimeReady.value = true;
+    rwkvStatus.value = 'runtime 已就绪';
+    _appendRwkvLog('RWKV runtime 已启动');
+  }
+
+  void _handleRwkvMessage(dynamic message) {
+    if (message is SendPort) {
+      _rwkvSendPort = message;
+      isRwkvRuntimeReady.value = true;
+      return;
+    }
+
+    if (message is LoadModelSteps) {
+      if (message.status == LoadingStatus.loading) {
+        isRwkvLoading.value = true;
+        final progress = (message.progress ?? 0).toDouble();
+        rwkvLoadProgress.value = progress.clamp(0, 1);
+        rwkvStatus.value =
+            '模型加载中 ${(rwkvLoadProgress.value * 100).toStringAsFixed(1)}%';
+      } else if (message.status == LoadingStatus.loaded) {
+        isRwkvLoading.value = false;
+        rwkvLoadProgress.value = 1.0;
+        _rwkvModelId = message.modelID;
+        rwkvStatus.value = '模型已加载 (ID: $_rwkvModelId)';
+        _appendRwkvLog('模型加载完成，modelID=$_rwkvModelId');
+        _rwkvLoadCompleter?.complete();
+      } else if (message.status == LoadingStatus.failedInLoading) {
+        isRwkvLoading.value = false;
+        rwkvStatus.value = '模型加载失败';
+        _rwkvLoadCompleter?.completeError(Exception(message.info ?? '加载失败'));
+      }
+      return;
+    }
+
+    if (message is ResponseBufferContent) {
+      final text = message.responseBufferContent;
+      if (rwkvMessages.isNotEmpty && rwkvMessages.last['role'] == 'assistant') {
+        rwkvMessages[rwkvMessages.length - 1] = {
+          'role': 'assistant',
+          'text': text,
+        };
+        rwkvMessages.refresh();
+      }
+      if (message.eosFound &&
+          _rwkvGenerateCompleter != null &&
+          !_rwkvGenerateCompleter!.isCompleted) {
+        _rwkvGenerateCompleter!.complete(text);
+      }
+      return;
+    }
+
+    if (message is GenerateStop) {
+      if (_rwkvGenerateCompleter != null &&
+          !_rwkvGenerateCompleter!.isCompleted) {
+        _rwkvGenerateCompleter!.complete(
+          rwkvMessages.isNotEmpty ? rwkvMessages.last['text'] ?? '' : '',
+        );
+      }
+      return;
+    }
+
+    if (message is Error) {
+      final msg = message.message;
+      _appendRwkvLog('错误: $msg');
+      if (_rwkvLoadCompleter != null && !_rwkvLoadCompleter!.isCompleted) {
+        _rwkvLoadCompleter!.completeError(Exception(msg));
+      }
+      if (_rwkvGenerateCompleter != null &&
+          !_rwkvGenerateCompleter!.isCompleted) {
+        _rwkvGenerateCompleter!.completeError(Exception(msg));
+      }
+      return;
+    }
+  }
+
+  Future<void> loadRwkvTestModel() async {
+    if (testModelPath.value.isEmpty) {
+      Get.snackbar('提示', '请先选择 .pth 模型文件');
+      return;
+    }
+    if (testTokenizerPath.value.isEmpty) {
+      Get.snackbar('提示', '请先选择 tokenizer 文件');
+      return;
+    }
+
+    try {
+      await _ensureRwkvRuntime();
+      final send = _rwkvSendPort;
+      if (send == null) throw Exception('RWKV runtime 未就绪');
+
+      if (_rwkvModelId != null) {
+        send.send(ReleaseRWKVModel(modelID: _rwkvModelId!));
+        _rwkvModelId = null;
+      }
+
+      isRwkvLoading.value = true;
+      rwkvLoadProgress.value = 0;
+      rwkvStatus.value = '开始加载模型...';
+      _rwkvLoadCompleter = Completer<void>();
+
+      send.send(
+        LoadRWKVModel(
+          modelPath: testModelPath.value,
+          backend: Backend.webRwkv,
+          tokenizerPath: testTokenizerPath.value,
+        ),
+      );
+
+      await _rwkvLoadCompleter!.future.timeout(const Duration(minutes: 3));
+      Get.snackbar('成功', '模型加载完成');
+    } catch (e) {
+      isRwkvLoading.value = false;
+      rwkvStatus.value = '模型加载失败';
+      Get.snackbar('加载失败', '$e');
+    }
+  }
+
+  void clearRwkvChat() {
+    rwkvMessages.clear();
+    rwkvTestLog.value = '';
+  }
+
+  Future<void> sendRwkvPrompt() async {
+    final prompt = testPromptController.text.trim();
+    if (prompt.isEmpty) return;
+    final send = _rwkvSendPort;
+    if (send == null || _rwkvModelId == null) {
+      Get.snackbar('提示', '请先加载模型');
+      return;
+    }
+    if (isRwkvGenerating.value) return;
+
+    isRwkvGenerating.value = true;
+    rwkvMessages.add({'role': 'user', 'text': prompt});
+    rwkvMessages.add({'role': 'assistant', 'text': ''});
+    testPromptController.clear();
+
+    _rwkvCurrentPrompt = 'User: $prompt\n\nAssistant:';
+    _rwkvGenerateCompleter = Completer<String>();
+    send.send(
+      GenerateAsync(_rwkvCurrentPrompt, modelID: _rwkvModelId!, maxLength: 512),
+    );
+    _rwkvPollTimer?.cancel();
+    _rwkvPollTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
+      _rwkvSendPort?.send(
+        GetResponseBufferContent(
+          messages: [_rwkvCurrentPrompt],
+          modelID: _rwkvModelId!,
+        ),
+      );
+    });
+
+    try {
+      await _rwkvGenerateCompleter!.future.timeout(const Duration(minutes: 2));
+      _appendRwkvLog('完成一轮回复');
+    } catch (e) {
+      _appendRwkvLog('生成失败: $e');
+      Get.snackbar('生成失败', '$e');
+    } finally {
+      isRwkvGenerating.value = false;
+      _rwkvPollTimer?.cancel();
+      _rwkvPollTimer = null;
+    }
+  }
 
   void applyPreset(String presetLabel) {
     selectedPreset.value = presetLabel;
@@ -640,8 +936,7 @@ class HomeController extends GetxController {
           '-c',
           'import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No CUDA GPU")',
         ],
-        workingDirectory:
-            repoPath.value.isNotEmpty ? repoPath.value : null,
+        workingDirectory: repoPath.value.isNotEmpty ? repoPath.value : null,
         environment: _envWithTorchRuntime(),
         runInShell: true,
         stdoutEncoding: utf8,
@@ -1404,7 +1699,7 @@ if "head.weight" in _ckpt:
         model_args.vocab_size = _detected_vocab
 import re as _re
 _detected_layers = max(
-    (int(_re.match(r"blocks\.(\d+)\.", k).group(1)) for k in _ckpt if _re.match(r"blocks\.(\d+)\.", k)),
+    (int(_re.match(r"blocks\\.(\\d+)\\.", k).group(1)) for k in _ckpt if _re.match(r"blocks\\.(\\d+)\\.", k)),
     default=model_args.n_layer - 1
 ) + 1
 if _detected_layers != model_args.n_layer:
@@ -1503,8 +1798,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       Get.snackbar('错误', '请设置训练数据路径 (.jsonl)');
       return;
     }
-    final trainPyPath =
-        '${repoPath.value}${Platform.pathSeparator}train.py';
+    final trainPyPath = '${repoPath.value}${Platform.pathSeparator}train.py';
     if (!File(trainPyPath).existsSync()) {
       Get.snackbar('错误', '仓库目录下未找到 train.py');
       return;
@@ -1552,10 +1846,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         precisionString,
         '--batch_size',
         '${batchSize.value}',
-        if (supportsNumSteps) ...[
-          '--num_steps',
-          '${numSteps.value}',
-        ],
+        if (supportsNumSteps) ...['--num_steps', '${numSteps.value}'],
         '--num_epochs',
         '${numEpochs.value}',
         '--learning_rate',
@@ -1578,8 +1869,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         final vcvarsall = _findAnyVcvarsallPathSync();
         if (vcvarsall != null) {
           final sep = Platform.pathSeparator;
-          final venvScripts =
-              '${repoPath.value}${sep}python_venv${sep}Scripts';
+          final venvScripts = '${repoPath.value}${sep}python_venv${sep}Scripts';
           final torchLib =
               '${repoPath.value}${sep}python_venv${sep}Lib${sep}site-packages'
               '${sep}torch${sep}lib';
@@ -1599,9 +1889,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             '${_cmdQuote(py)} ${args.map(_cmdQuote).join(' ')}',
           ].join('\r\n');
           await File(launcherPath).writeAsString(launcherContent);
-          _appendLogData(
-            '[BUILD] Windows 启动器: $launcherPath\n',
-          );
+          _appendLogData('[BUILD] Windows 启动器: $launcherPath\n');
           trainingLog.value = _buildLogDisplay();
           _trainingProcess = await Process.start(
             launcherPath,
@@ -1724,8 +2012,9 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   void _parseLoss(String data) {
     _lossParseBuffer += data;
     if (_lossParseBuffer.length > 8000) {
-      _lossParseBuffer =
-          _lossParseBuffer.substring(_lossParseBuffer.length - 8000);
+      _lossParseBuffer = _lossParseBuffer.substring(
+        _lossParseBuffer.length - 8000,
+      );
     }
     final re = RegExp(r'\|\s*(\d+)/\d+.*?loss=([\d.]+)');
     bool changed = false;
@@ -2045,10 +2334,12 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             stdoutEncoding: utf8,
             stderrEncoding: utf8,
           );
-          if (result.stdout.toString().isNotEmpty)
+          if (result.stdout.toString().isNotEmpty) {
             installLog.value += '${result.stdout}';
-          if (result.stderr.toString().isNotEmpty)
+          }
+          if (result.stderr.toString().isNotEmpty) {
             installLog.value += '${result.stderr}';
+          }
 
           if (result.exitCode != 0) {
             installLog.value += '\n  UV 安装 torch 失败，尝试使用 pip 回退...\n';
@@ -2061,10 +2352,12 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
               stdoutEncoding: utf8,
               stderrEncoding: utf8,
             );
-            if (result.stdout.toString().isNotEmpty)
+            if (result.stdout.toString().isNotEmpty) {
               installLog.value += '${result.stdout}';
-            if (result.stderr.toString().isNotEmpty)
+            }
+            if (result.stderr.toString().isNotEmpty) {
               installLog.value += '${result.stderr}';
+            }
           }
 
           if (result.exitCode == 0) {
@@ -2082,10 +2375,12 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             stdoutEncoding: utf8,
             stderrEncoding: utf8,
           );
-          if (result.stdout.toString().isNotEmpty)
+          if (result.stdout.toString().isNotEmpty) {
             installLog.value += '${result.stdout}';
-          if (result.stderr.toString().isNotEmpty)
+          }
+          if (result.stderr.toString().isNotEmpty) {
             installLog.value += '${result.stderr}';
+          }
 
           if (result.exitCode == 0) {
             installLog.value += '✓ $pkg 安装成功\n\n';
@@ -2240,8 +2535,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             : '✗ ninja 安装失败\n\n';
         await detectBuildTools();
         if (buildToolsFullyReady.value) {
-          buildToolsLog.value +=
-              '✓ ninja 与 MSVC 均已就绪，无需继续安装。\n';
+          buildToolsLog.value += '✓ ninja 与 MSVC 均已就绪，无需继续安装。\n';
           Get.snackbar(
             '编译工具',
             'ninja 与 MSVC 均已安装',
@@ -2276,8 +2570,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       }
 
       if (!wingetInstalled.value && Platform.isWindows) {
-        buildToolsLog.value +=
-            '✗ 安装 MSVC 需先安装 winget，详见设置页顶部「应用安装程序」\n';
+        buildToolsLog.value += '✗ 安装 MSVC 需先安装 winget，详见设置页顶部「应用安装程序」\n';
         Get.snackbar(
           '需先安装 winget',
           '请先安装「应用安装程序」以通过 winget 安装 MSVC，详见设置页顶部',
