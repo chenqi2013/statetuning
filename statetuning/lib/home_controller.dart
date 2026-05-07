@@ -489,7 +489,7 @@ class HomeController extends GetxController {
 
   Future<void> pickTestStateFile() async {
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: '选择 state 文件（暂不支持加载）',
+      dialogTitle: '选择 state 文件',
       type: FileType.custom,
       allowedExtensions: const ['state'],
     );

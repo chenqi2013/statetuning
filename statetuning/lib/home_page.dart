@@ -108,9 +108,7 @@ class HomePage extends GetView<HomeController> {
                 _chip(Icons.memory, 'GPU: ${controller.gpuInfo.value}'),
                 const SizedBox(width: 16),
                 _chip(
-                  controller.isTraining.value
-                      ? Icons.play_arrow
-                      : Icons.circle,
+                  controller.isTraining.value ? Icons.play_arrow : Icons.circle,
                   controller.status.value,
                   color: controller.isTraining.value
                       ? const Color(0xFF22C55E)
@@ -124,7 +122,11 @@ class HomePage extends GetView<HomeController> {
     );
   }
 
-  Widget _chip(IconData icon, String label, {Color color = const Color(0xFFB0B5BC)}) {
+  Widget _chip(
+    IconData icon,
+    String label, {
+    Color color = const Color(0xFFB0B5BC),
+  }) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -145,41 +147,44 @@ class HomePage extends GetView<HomeController> {
       controller.envReady.value ? [0, 1, 2, 3, 4, 5, 6] : [5, 0, 1, 2, 3, 4, 6];
 
   Widget _buildTabBar() {
-    return Obx(
-      () {
-        final order = _tabOrder();
-        return Container(
-          color: const Color(0xFF1A1D21),
-          child: Row(
-            children: order.map((contentIndex) {
-              final selected = controller.currentTabIndex.value == contentIndex;
-              return GestureDetector(
-                onTap: () => controller.setTabIndex(contentIndex),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: selected ? const Color(0xFF3B82F6) : Colors.transparent,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                  child: Text(
-                    _tabLabels[contentIndex],
-                    style: TextStyle(
-                      color: selected ? Colors.white : const Color(0xFF6B7280),
-                      fontSize: 15,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+    return Obx(() {
+      final order = _tabOrder();
+      return Container(
+        color: const Color(0xFF1A1D21),
+        child: Row(
+          children: order.map((contentIndex) {
+            final selected = controller.currentTabIndex.value == contentIndex;
+            return GestureDetector(
+              onTap: () => controller.setTabIndex(contentIndex),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: selected
+                          ? const Color(0xFF3B82F6)
+                          : Colors.transparent,
+                      width: 2,
                     ),
                   ),
                 ),
-              );
-            }).toList(),
-          ),
-        );
-      },
-    );
+                child: Text(
+                  _tabLabels[contentIndex],
+                  style: TextStyle(
+                    color: selected ? Colors.white : const Color(0xFF6B7280),
+                    fontSize: 15,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      );
+    });
   }
 
   // ─── Tab 0: 模型 ─────────────────────────────────────────────────────────────
@@ -192,39 +197,48 @@ class HomePage extends GetView<HomeController> {
         children: [
           _sectionCard(
             title: '模型规格预设',
-            child: Obx(() => Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  children: HomeController.presets.map((p) {
-                    final selected = controller.selectedPreset.value == p.label;
-                    return GestureDetector(
-                      onTap: () => controller.applyPreset(p.label),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-                        decoration: BoxDecoration(
+            child: Obx(
+              () => Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: HomeController.presets.map((p) {
+                  final selected = controller.selectedPreset.value == p.label;
+                  return GestureDetector(
+                    onTap: () => controller.applyPreset(p.label),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? const Color(0xFF3B82F6)
+                            : const Color(0xFF1A1D21),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
                           color: selected
                               ? const Color(0xFF3B82F6)
-                              : const Color(0xFF1A1D21),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: selected
-                                ? const Color(0xFF3B82F6)
-                                : const Color(0xFF3A3F47),
-                          ),
-                        ),
-                        child: Text(
-                          p.label,
-                          style: TextStyle(
-                            color: selected ? Colors.white : const Color(0xFFB0B5BC),
-                            fontSize: 13,
-                            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                          ),
+                              : const Color(0xFF3A3F47),
                         ),
                       ),
-                    );
-                  }).toList(),
-                )),
+                      child: Text(
+                        p.label,
+                        style: TextStyle(
+                          color: selected
+                              ? Colors.white
+                              : const Color(0xFFB0B5BC),
+                          fontSize: 13,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
           ),
           const SizedBox(height: 20),
           _sectionCard(
@@ -240,16 +254,27 @@ class HomePage extends GetView<HomeController> {
                   browseIcon: Icons.file_open,
                 ),
                 Obx(() {
-                  if (!controller.isDetectingModel.value) return const SizedBox.shrink();
+                  if (!controller.isDetectingModel.value)
+                    return const SizedBox.shrink();
                   return const Padding(
                     padding: EdgeInsets.only(top: 10),
-                    child: Row(children: [
-                      SizedBox(width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2)),
-                      SizedBox(width: 10),
-                      Text('正在读取模型尺寸...',
-                          style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
-                    ]),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 10),
+                        Text(
+                          '正在读取模型尺寸...',
+                          style: TextStyle(
+                            color: Color(0xFF9CA3AF),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
                   );
                 }),
               ],
@@ -261,21 +286,33 @@ class HomePage extends GetView<HomeController> {
             child: Row(
               children: [
                 Expanded(
-                  child: _labeledField('词表大小 (vocab_size)',
-                      controller.vocabSizeController,
-                      hint: '65536', keyboardType: TextInputType.number, readOnly: true),
+                  child: _labeledField(
+                    '词表大小 (vocab_size)',
+                    controller.vocabSizeController,
+                    hint: '65536',
+                    keyboardType: TextInputType.number,
+                    readOnly: true,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _labeledField('嵌入维度 (n_embd)',
-                      controller.nEmbdController,
-                      hint: '1024', keyboardType: TextInputType.number, readOnly: true),
+                  child: _labeledField(
+                    '嵌入维度 (n_embd)',
+                    controller.nEmbdController,
+                    hint: '1024',
+                    keyboardType: TextInputType.number,
+                    readOnly: true,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _labeledField('层数 (n_layer)',
-                      controller.nLayerController,
-                      hint: '24', keyboardType: TextInputType.number, readOnly: true),
+                  child: _labeledField(
+                    '层数 (n_layer)',
+                    controller.nLayerController,
+                    hint: '24',
+                    keyboardType: TextInputType.number,
+                    readOnly: true,
+                  ),
                 ),
               ],
             ),
@@ -335,17 +372,26 @@ class HomePage extends GetView<HomeController> {
               children: [
                 const Text(
                   '首次进入已自动解压内置仓库到 exe 同目录，可直接使用。',
-                  style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.4),
+                  style: TextStyle(
+                    color: Color(0xFFB0B5BC),
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
                 ),
                 const SizedBox(height: 12),
-                _labeledField('仓库路径', controller.repoPathController,
-                    hint: '默认：exe 同目录 / statetuning_repo',
-                    onBrowse: controller.pickRepoDir),
+                _labeledField(
+                  '仓库路径',
+                  controller.repoPathController,
+                  hint: '默认：exe 同目录 / statetuning_repo',
+                  onBrowse: controller.pickRepoDir,
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     ElevatedButton.icon(
-                      onPressed: controller.isCloningRepo.value ? null : controller.checkRepo,
+                      onPressed: controller.isCloningRepo.value
+                          ? null
+                          : controller.checkRepo,
                       icon: const Icon(Icons.check_circle_outline, size: 18),
                       label: const Text('检查路径'),
                       style: _btnStyle(const Color(0xFF6B7280), compact: true),
@@ -360,7 +406,9 @@ class HomePage extends GetView<HomeController> {
                               : controller.initRepoFromBundle,
                           icon: const Icon(Icons.folder_copy, size: 16),
                           label: const Text('解压到此处'),
-                          style: TextButton.styleFrom(foregroundColor: const Color(0xFF6366F1)),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF6366F1),
+                          ),
                         );
                       }
                       return const SizedBox.shrink();
@@ -368,9 +416,13 @@ class HomePage extends GetView<HomeController> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Obx(() => _logBox(controller.repoLog.value,
+                Obx(
+                  () => _logBox(
+                    controller.repoLog.value,
                     minHeight: 50,
-                    placeholder: '仓库状态显示在此')),
+                    placeholder: '仓库状态显示在此',
+                  ),
+                ),
               ],
             ),
           ),
@@ -379,10 +431,13 @@ class HomePage extends GetView<HomeController> {
             title: '训练数据',
             child: Column(
               children: [
-                _labeledField('JSONL 数据文件路径', controller.dataPathController,
-                    hint: '点击右侧按钮选择文件',
-                    onBrowse: controller.pickDataFile,
-                    browseIcon: Icons.file_open),
+                _labeledField(
+                  'JSONL 数据文件路径',
+                  controller.dataPathController,
+                  hint: '点击右侧按钮选择文件',
+                  onBrowse: controller.pickDataFile,
+                  browseIcon: Icons.file_open,
+                ),
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
@@ -397,17 +452,22 @@ class HomePage extends GetView<HomeController> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('数据格式示例 (每行一个 JSON):',
-                            style: TextStyle(
-                                color: Color(0xFF6B7280), fontSize: 12)),
+                        Text(
+                          '数据格式示例 (每行一个 JSON):',
+                          style: TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 12,
+                          ),
+                        ),
                         SizedBox(height: 6),
                         SelectableText(
                           '{"text": "User: 你好\\n\\nAssistant: 你好！有什么可以帮助你的吗？\\n\\n"}\n'
                           '{"text": "User: 讲个笑话\\n\\nAssistant: 好的...\\n\\n"}',
                           style: TextStyle(
-                              color: Color(0xFF86EFAC),
-                              fontSize: 12,
-                              fontFamily: 'monospace'),
+                            color: Color(0xFF86EFAC),
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                          ),
                           textAlign: TextAlign.left,
                         ),
                       ],
@@ -420,9 +480,12 @@ class HomePage extends GetView<HomeController> {
           const SizedBox(height: 20),
           _sectionCard(
             title: '输出目录',
-            child: _labeledField('输出目录', controller.outputDirController,
-                hint: '点击右侧按钮选择文件夹',
-                onBrowse: controller.pickOutputDir),
+            child: _labeledField(
+              '输出目录',
+              controller.outputDirController,
+              hint: '点击右侧按钮选择文件夹',
+              onBrowse: controller.pickOutputDir,
+            ),
           ),
           const SizedBox(height: 24),
           SizedBox(
@@ -454,14 +517,21 @@ class HomePage extends GetView<HomeController> {
                 Row(
                   children: [
                     Expanded(
-                      child: _labeledField('Batch Size', controller.batchSizeController,
-                          hint: '4', keyboardType: TextInputType.number),
+                      child: _labeledField(
+                        'Batch Size',
+                        controller.batchSizeController,
+                        hint: '4',
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
-                      child: _labeledField('训练步数 (num_steps)',
-                          controller.numStepsController,
-                          hint: '1000', keyboardType: TextInputType.number),
+                      child: _labeledField(
+                        '训练步数 (num_steps)',
+                        controller.numStepsController,
+                        hint: '1000',
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ],
                 ),
@@ -469,14 +539,20 @@ class HomePage extends GetView<HomeController> {
                 Row(
                   children: [
                     Expanded(
-                      child: _labeledField('训练轮数 (num_epochs)',
-                          controller.numEpochsController,
-                          hint: '1', keyboardType: TextInputType.number),
+                      child: _labeledField(
+                        '训练轮数 (num_epochs)',
+                        controller.numEpochsController,
+                        hint: '1',
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
-                      child: _labeledField('学习率', controller.learningRateController,
-                          hint: '1e-5'),
+                      child: _labeledField(
+                        '学习率',
+                        controller.learningRateController,
+                        hint: '1e-5',
+                      ),
                     ),
                   ],
                 ),
@@ -484,28 +560,46 @@ class HomePage extends GetView<HomeController> {
                 Row(
                   children: [
                     Expanded(
-                      child: _labeledField('上下文长度 (ctx_len)',
-                          controller.ctxLenController,
-                          hint: '512', keyboardType: TextInputType.number),
+                      child: _labeledField(
+                        '上下文长度 (ctx_len)',
+                        controller.ctxLenController,
+                        hint: '512',
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('训练精度',
-                              style: TextStyle(
-                                  color: Color(0xFF9CA3AF), fontSize: 13)),
+                          const Text(
+                            '训练精度',
+                            style: TextStyle(
+                              color: Color(0xFF9CA3AF),
+                              fontSize: 13,
+                            ),
+                          ),
                           const SizedBox(height: 8),
-                          Obx(() => Row(
-                                children: [
-                                  _precisionButton('BF16', TrainingPrecision.bf16),
-                                  const SizedBox(width: 10),
-                                  _precisionButton('FP16', TrainingPrecision.fp16),
-                                  const SizedBox(width: 10),
-                                  _precisionButton('FP32', TrainingPrecision.fp32),
-                                ],
-                              )),
+                          Obx(
+                            () => Row(
+                              children: [
+                                _precisionButton(
+                                  'BF16',
+                                  TrainingPrecision.bf16,
+                                ),
+                                const SizedBox(width: 10),
+                                _precisionButton(
+                                  'FP16',
+                                  TrainingPrecision.fp16,
+                                ),
+                                const SizedBox(width: 10),
+                                _precisionButton(
+                                  'FP32',
+                                  TrainingPrecision.fp32,
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -515,62 +609,87 @@ class HomePage extends GetView<HomeController> {
             ),
           ),
           const SizedBox(height: 20),
-          Obx(() => _sectionCard(
-                title: '配置摘要',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _summaryRow('仓库路径',
-                        controller.repoPath.value.isEmpty ? '未设置' : controller.repoPath.value),
-                    _summaryRow('模型文件',
-                        controller.modelPath.value.isEmpty ? '未设置' : controller.modelPath.value),
-                    _summaryRow('数据文件',
-                        controller.dataPath.value.isEmpty ? '未设置' : controller.dataPath.value),
-                    _summaryRow('输出目录', controller.outputDir.value),
-                    _summaryRow('精度', controller.precisionString.toUpperCase()),
-                    _summaryRow('模型规格', controller.selectedPreset.value),
-                    _summaryRow('n_embd / n_layer',
-                        '${controller.nEmbd.value} / ${controller.nLayer.value}'),
-                    _summaryRow('ctx_len', '${controller.ctxLen.value}'),
-                    _summaryRow('batch / steps / epochs',
-                        '${controller.batchSize.value} / ${controller.numSteps.value} / ${controller.numEpochs.value}'),
-                    _summaryRow('学习率', controller.learningRate.value),
-                  ],
-                ),
-              )),
-          const SizedBox(height: 24),
-          Obx(() => Row(
+          Obx(
+            () => _sectionCard(
+              title: '配置摘要',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _summaryRow(
+                    '仓库路径',
+                    controller.repoPath.value.isEmpty
+                        ? '未设置'
+                        : controller.repoPath.value,
+                  ),
+                  _summaryRow(
+                    '模型文件',
+                    controller.modelPath.value.isEmpty
+                        ? '未设置'
+                        : controller.modelPath.value,
+                  ),
+                  _summaryRow(
+                    '数据文件',
+                    controller.dataPath.value.isEmpty
+                        ? '未设置'
+                        : controller.dataPath.value,
+                  ),
+                  _summaryRow('输出目录', controller.outputDir.value),
+                  _summaryRow('精度', controller.precisionString.toUpperCase()),
+                  _summaryRow('模型规格', controller.selectedPreset.value),
+                  _summaryRow(
+                    'n_embd / n_layer',
+                    '${controller.nEmbd.value} / ${controller.nLayer.value}',
+                  ),
+                  _summaryRow('ctx_len', '${controller.ctxLen.value}'),
+                  _summaryRow(
+                    'batch / steps / epochs',
+                    '${controller.batchSize.value} / ${controller.numSteps.value} / ${controller.numEpochs.value}',
+                  ),
+                  _summaryRow('学习率', controller.learningRate.value),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Obx(
+            () => Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: ElevatedButton.icon(
+                    onPressed: controller.isTraining.value
+                        ? null
+                        : controller.startTraining,
+                    icon: controller.isTraining.value
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.rocket_launch),
+                    label: Text(
+                      controller.isTraining.value ? '训练中...' : '开始训练',
+                    ),
+                    style: _btnStyle(const Color(0xFF22C55E)),
+                  ),
+                ),
+                if (controller.isTraining.value) ...[
+                  const SizedBox(width: 12),
                   Expanded(
-                    flex: 3,
                     child: ElevatedButton.icon(
-                      onPressed:
-                          controller.isTraining.value ? null : controller.startTraining,
-                      icon: controller.isTraining.value
-                          ? const SizedBox(
-                              width: 20, height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Icon(Icons.rocket_launch),
-                      label: Text(
-                          controller.isTraining.value ? '训练中...' : '开始训练'),
-                      style: _btnStyle(const Color(0xFF22C55E)),
+                      onPressed: controller.stopTraining,
+                      icon: const Icon(Icons.stop),
+                      label: const Text('停止训练'),
+                      style: _btnStyle(const Color(0xFFEF4444)),
                     ),
                   ),
-                  if (controller.isTraining.value) ...[
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: controller.stopTraining,
-                        icon: const Icon(Icons.stop),
-                        label: const Text('停止训练'),
-                        style: _btnStyle(const Color(0xFFEF4444)),
-                      ),
-                    ),
-                  ],
                 ],
-              )),
+              ],
+            ),
+          ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
@@ -605,13 +724,17 @@ class HomePage extends GetView<HomeController> {
         children: [
           SizedBox(
             width: 160,
-            child: Text(key,
-                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+            child: Text(
+              key,
+              style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+            ),
           ),
           Expanded(
-            child: Text(value,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                overflow: TextOverflow.ellipsis),
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -632,7 +755,8 @@ class HomePage extends GetView<HomeController> {
               const Spacer(),
               // 「查看Loss曲线」按钮：训练完成且有数据时显示
               Obx(() {
-                if (controller.lossHistory.isEmpty) return const SizedBox.shrink();
+                if (controller.lossHistory.isEmpty)
+                  return const SizedBox.shrink();
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ElevatedButton.icon(
@@ -644,7 +768,8 @@ class HomePage extends GetView<HomeController> {
                 );
               }),
               Obx(() {
-                if (controller.lossHistory.isEmpty) return const SizedBox.shrink();
+                if (controller.lossHistory.isEmpty)
+                  return const SizedBox.shrink();
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ElevatedButton.icon(
@@ -656,7 +781,8 @@ class HomePage extends GetView<HomeController> {
                 );
               }),
               Obx(() {
-                if (!controller.isTraining.value) return const SizedBox.shrink();
+                if (!controller.isTraining.value)
+                  return const SizedBox.shrink();
                 return ElevatedButton.icon(
                   onPressed: controller.stopTraining,
                   icon: const Icon(Icons.stop, size: 18),
@@ -724,17 +850,30 @@ class HomePage extends GetView<HomeController> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.show_chart, color: Color(0xFF7C3AED), size: 22),
+                    const Icon(
+                      Icons.show_chart,
+                      color: Color(0xFF7C3AED),
+                      size: 22,
+                    ),
                     const SizedBox(width: 10),
-                    const Text('Training Loss 曲线',
-                        style: TextStyle(color: Color(0xFFE2E8F0),
-                            fontSize: 16, fontWeight: FontWeight.w600)),
+                    const Text(
+                      'Training Loss 曲线',
+                      style: TextStyle(
+                        color: Color(0xFFE2E8F0),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const Spacer(),
-                    Obx(() => Text(
-                          '共 ${controller.lossHistory.length} 步',
-                          style: const TextStyle(
-                              color: Color(0xFF6B7280), fontSize: 13),
-                        )),
+                    Obx(
+                      () => Text(
+                        '共 ${controller.lossHistory.length} 步',
+                        style: const TextStyle(
+                          color: Color(0xFF6B7280),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
                     const SizedBox(width: 16),
                     IconButton(
                       icon: const Icon(Icons.close, color: Color(0xFF6B7280)),
@@ -743,7 +882,9 @@ class HomePage extends GetView<HomeController> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                Expanded(child: Obx(() => _buildLossChart(controller.lossHistory))),
+                Expanded(
+                  child: Obx(() => _buildLossChart(controller.lossHistory)),
+                ),
               ],
             ),
           ),
@@ -755,12 +896,15 @@ class HomePage extends GetView<HomeController> {
   Widget _buildLossChart(List<double> losses) {
     if (losses.isEmpty) {
       return const Center(
-          child: Text('暂无 Loss 数据', style: TextStyle(color: Color(0xFF6B7280))));
+        child: Text('暂无 Loss 数据', style: TextStyle(color: Color(0xFF6B7280))),
+      );
     }
 
     // 每隔 N 点采样，避免数据量太大时渲染卡顿
     const maxPoints = 400;
-    final step = losses.length > maxPoints ? (losses.length / maxPoints).ceil() : 1;
+    final step = losses.length > maxPoints
+        ? (losses.length / maxPoints).ceil()
+        : 1;
     final spots = <FlSpot>[];
     for (var i = 0; i < losses.length; i += step) {
       spots.add(FlSpot(i.toDouble(), losses[i]));
@@ -801,38 +945,50 @@ class HomePage extends GetView<HomeController> {
         ),
         titlesData: FlTitlesData(
           leftTitles: AxisTitles(
-            axisNameWidget: const Text('Loss',
-                style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+            axisNameWidget: const Text(
+              'Loss',
+              style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+            ),
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 48,
-              getTitlesWidget: (v, _) => Text(v.toStringAsFixed(2),
-                  style: const TextStyle(
-                      color: Color(0xFF6B7280), fontSize: 11)),
+              getTitlesWidget: (v, _) => Text(
+                v.toStringAsFixed(2),
+                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11),
+              ),
             ),
           ),
           bottomTitles: AxisTitles(
-            axisNameWidget: const Text('Step',
-                style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+            axisNameWidget: const Text(
+              'Step',
+              style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+            ),
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 28,
-              getTitlesWidget: (v, _) => Text(v.toInt().toString(),
-                  style: const TextStyle(
-                      color: Color(0xFF6B7280), fontSize: 11)),
+              getTitlesWidget: (v, _) => Text(
+                v.toInt().toString(),
+                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11),
+              ),
             ),
           ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
         ),
         lineTouchData: LineTouchData(
           touchTooltipData: LineTouchTooltipData(
             getTooltipColor: (_) => const Color(0xFF252830),
             getTooltipItems: (spots) => spots
-                .map((s) => LineTooltipItem(
-                      'Step ${s.x.toInt()}\nLoss: ${s.y.toStringAsFixed(4)}',
-                      const TextStyle(color: Color(0xFFE2E8F0), fontSize: 12),
-                    ))
+                .map(
+                  (s) => LineTooltipItem(
+                    'Step ${s.x.toInt()}\nLoss: ${s.y.toStringAsFixed(4)}',
+                    const TextStyle(color: Color(0xFFE2E8F0), fontSize: 12),
+                  ),
+                )
                 .toList(),
           ),
         ),
@@ -857,9 +1013,12 @@ class HomePage extends GetView<HomeController> {
         children: [
           if (isTraining)
             const SizedBox(
-              width: 10, height: 10,
+              width: 10,
+              height: 10,
               child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Color(0xFF22C55E)),
+                strokeWidth: 2,
+                color: Color(0xFF22C55E),
+              ),
             )
           else
             const Icon(Icons.circle, size: 10, color: Color(0xFF6B7280)),
@@ -867,7 +1026,9 @@ class HomePage extends GetView<HomeController> {
           Text(
             isTraining ? '训练进行中' : '待机',
             style: TextStyle(
-              color: isTraining ? const Color(0xFF22C55E) : const Color(0xFF6B7280),
+              color: isTraining
+                  ? const Color(0xFF22C55E)
+                  : const Color(0xFF6B7280),
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
@@ -890,11 +1051,15 @@ class HomePage extends GetView<HomeController> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Obx(() => Text(
-                      '输出目录: ${controller.outputDir.value}',
-                      style: const TextStyle(
-                          color: Color(0xFF6B7280), fontSize: 13),
-                    )),
+                Obx(
+                  () => Text(
+                    '输出目录: ${controller.outputDir.value}',
+                    style: const TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
                   onPressed: controller.refreshOutputFiles,
@@ -918,7 +1083,9 @@ class HomePage extends GetView<HomeController> {
                           '暂无输出文件\n训练完成后，.state.pth 权重文件将显示在这里',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                              color: Color(0xFF4B5563), fontSize: 14),
+                            color: Color(0xFF4B5563),
+                            fontSize: 14,
+                          ),
                         ),
                       ),
                     );
@@ -968,12 +1135,18 @@ class HomePage extends GetView<HomeController> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(fileName,
-                    style: const TextStyle(color: Colors.white, fontSize: 14)),
-                Text(path,
-                    style: const TextStyle(
-                        color: Color(0xFF6B7280), fontSize: 11),
-                    overflow: TextOverflow.ellipsis),
+                Text(
+                  fileName,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+                Text(
+                  path,
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 11,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
@@ -1012,7 +1185,7 @@ class HomePage extends GetView<HomeController> {
                 ),
                 const SizedBox(height: 12),
                 _labeledField(
-                  'State 文件（暂不支持加载）',
+                  'State 文件',
                   controller.testStatePathController,
                   hint: '.state（当前仅展示入口）',
                   onBrowse: controller.pickTestStateFile,
@@ -1059,7 +1232,10 @@ class HomePage extends GetView<HomeController> {
                 Obx(
                   () => Text(
                     '状态: ${controller.rwkvStatus.value}',
-                    style: const TextStyle(color: Color(0xFFB0B5BC), fontSize: 13),
+                    style: const TextStyle(
+                      color: Color(0xFFB0B5BC),
+                      fontSize: 13,
+                    ),
                   ),
                 ),
                 Obx(
@@ -1089,7 +1265,10 @@ class HomePage extends GetView<HomeController> {
                 Obx(
                   () => Container(
                     width: double.infinity,
-                    constraints: const BoxConstraints(minHeight: 260, maxHeight: 420),
+                    constraints: const BoxConstraints(
+                      minHeight: 260,
+                      maxHeight: 420,
+                    ),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1A1D21),
@@ -1100,7 +1279,10 @@ class HomePage extends GetView<HomeController> {
                         ? const Center(
                             child: Text(
                               '加载模型后，在下方输入 prompt 并发送',
-                              style: TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+                              style: TextStyle(
+                                color: Color(0xFF6B7280),
+                                fontSize: 13,
+                              ),
                             ),
                           )
                         : ListView.builder(
@@ -1118,13 +1300,19 @@ class HomePage extends GetView<HomeController> {
                                     horizontal: 12,
                                     vertical: 10,
                                   ),
-                                  constraints: const BoxConstraints(maxWidth: 680),
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 680,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: isUser
-                                        ? const Color(0xFF3B82F6).withValues(alpha: 0.2)
+                                        ? const Color(
+                                            0xFF3B82F6,
+                                          ).withValues(alpha: 0.2)
                                         : const Color(0xFF252830),
                                     borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: const Color(0xFF3A3F47)),
+                                    border: Border.all(
+                                      color: const Color(0xFF3A3F47),
+                                    ),
                                   ),
                                   child: Text(
                                     m['text'] ?? '',
@@ -1160,11 +1348,15 @@ class HomePage extends GetView<HomeController> {
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFF3A3F47)),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF3A3F47),
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFF3B82F6)),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF3B82F6),
+                            ),
                           ),
                         ),
                         onSubmitted: (_) => controller.sendRwkvPrompt(),
@@ -1189,7 +1381,10 @@ class HomePage extends GetView<HomeController> {
                         label: Text(
                           controller.isRwkvGenerating.value ? '生成中...' : '发送',
                         ),
-                        style: _btnStyle(const Color(0xFF22C55E), compact: true),
+                        style: _btnStyle(
+                          const Color(0xFF22C55E),
+                          compact: true,
+                        ),
                       ),
                     ),
                   ],
@@ -1235,7 +1430,11 @@ class HomePage extends GetView<HomeController> {
         children: [
           const Text(
             '以下为一键安装的先决条件，全新 Windows 请按顺序检查：',
-            style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.5),
+            style: TextStyle(
+              color: Color(0xFFB0B5BC),
+              fontSize: 13,
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 16),
           Obx(() {
@@ -1254,7 +1453,8 @@ class HomePage extends GetView<HomeController> {
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
-                    onPressed: () => controller.openUrl('https://aka.ms/getwinget'),
+                    onPressed: () =>
+                        controller.openUrl('https://aka.ms/getwinget'),
                     icon: const Icon(Icons.open_in_new, size: 16),
                     label: const Text('打开 winget 安装页'),
                     style: OutlinedButton.styleFrom(
@@ -1263,8 +1463,10 @@ class HomePage extends GetView<HomeController> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text('或运行 PowerShell（以管理员身份）：',
-                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 11)),
+                  const Text(
+                    '或运行 PowerShell（以管理员身份）：',
+                    style: TextStyle(color: Color(0xFF6B7280), fontSize: 11),
+                  ),
                   const SizedBox(height: 4),
                   SelectableText(
                     'Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe',
@@ -1277,7 +1479,7 @@ class HomePage extends GetView<HomeController> {
                 ],
               ),
             );
-              }),
+          }),
           const SizedBox(height: 16),
           Obx(() {
             final uv = controller.uvInstalled.value;
@@ -1287,12 +1489,22 @@ class HomePage extends GetView<HomeController> {
               description: 'Python 虚拟环境工具，依赖安装到项目 python_venv 目录',
               onRetry: controller.detectUv,
               whenMissing: ElevatedButton.icon(
-                onPressed: controller.isUvInstalling.value ? null : controller.installUv,
+                onPressed: controller.isUvInstalling.value
+                    ? null
+                    : controller.installUv,
                 icon: controller.isUvInstalling.value
-                    ? const SizedBox(width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : const Icon(Icons.download, size: 18),
-                label: Text(controller.isUvInstalling.value ? '安装中...' : '一键安装 UV'),
+                label: Text(
+                  controller.isUvInstalling.value ? '安装中...' : '一键安装 UV',
+                ),
                 style: _btnStyle(const Color(0xFF7C3AED), compact: true),
               ),
             );
@@ -1308,7 +1520,9 @@ class HomePage extends GetView<HomeController> {
               whenMissing: Row(
                 children: [
                   OutlinedButton.icon(
-                    onPressed: () => controller.openUrl('https://www.nvidia.com/Download/index.aspx'),
+                    onPressed: () => controller.openUrl(
+                      'https://www.nvidia.com/Download/index.aspx',
+                    ),
                     icon: const Icon(Icons.open_in_new, size: 16),
                     label: const Text('前往 NVIDIA 官网下载驱动'),
                     style: OutlinedButton.styleFrom(
@@ -1348,7 +1562,9 @@ class HomePage extends GetView<HomeController> {
             children: [
               Icon(
                 installed ? Icons.check_circle : Icons.warning_amber_rounded,
-                color: installed ? const Color(0xFF22C55E) : const Color(0xFFFBBF24),
+                color: installed
+                    ? const Color(0xFF22C55E)
+                    : const Color(0xFFFBBF24),
                 size: 20,
               ),
               const SizedBox(width: 8),
@@ -1396,13 +1612,18 @@ class HomePage extends GetView<HomeController> {
           const Text(
             'RWKV7 训练需要 CUDA Toolkit（CUDA_HOME 指向安装目录）。\n'
             '启动时自动检测，未检测到可点击「一键安装 CUDA」或手动选择。',
-            style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 13, height: 1.5),
+            style: TextStyle(
+              color: Color(0xFFB0B5BC),
+              fontSize: 13,
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 14),
           _labeledField(
             'CUDA 安装目录',
             controller.cudaHomeController,
-            hint: r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x 或 v13.x',
+            hint:
+                r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x 或 v13.x',
             onBrowse: controller.pickCudaHomeDir,
           ),
           const SizedBox(height: 12),
@@ -1420,14 +1641,21 @@ class HomePage extends GetView<HomeController> {
                   return Expanded(
                     child: Row(
                       children: [
-                        const Icon(Icons.check_circle,
-                            color: Color(0xFF22C55E), size: 18),
+                        const Icon(
+                          Icons.check_circle,
+                          color: Color(0xFF22C55E),
+                          size: 18,
+                        ),
                         const SizedBox(width: 6),
                         Expanded(
-                          child: Text(controller.cudaHome.value,
-                              style: const TextStyle(
-                                  color: Color(0xFF22C55E), fontSize: 13),
-                              overflow: TextOverflow.ellipsis),
+                          child: Text(
+                            controller.cudaHome.value,
+                            style: const TextStyle(
+                              color: Color(0xFF22C55E),
+                              fontSize: 13,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
@@ -1440,14 +1668,19 @@ class HomePage extends GetView<HomeController> {
                         : controller.installCuda,
                     icon: controller.isCudaInstalling.value
                         ? const SizedBox(
-                            width: 18, height: 18,
+                            width: 18,
+                            height: 18,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Icon(Icons.download, size: 18),
-                    label: Text(controller.isCudaInstalling.value
-                        ? '安装中...'
-                        : '一键安装 CUDA'),
+                    label: Text(
+                      controller.isCudaInstalling.value
+                          ? '安装中...'
+                          : '一键安装 CUDA',
+                    ),
                     style: _btnStyle(const Color(0xFF7C3AED), compact: true),
                   ),
                 );
@@ -1455,10 +1688,16 @@ class HomePage extends GetView<HomeController> {
             ],
           ),
           const SizedBox(height: 10),
-          Obx(() => _logBox(controller.cudaDetectLog.value,
-              minHeight: 50, placeholder: '点击「自动检测」检查 CUDA 安装')),
+          Obx(
+            () => _logBox(
+              controller.cudaDetectLog.value,
+              minHeight: 50,
+              placeholder: '点击「自动检测」检查 CUDA 安装',
+            ),
+          ),
           Obx(() {
-            if (controller.cudaInstallLog.value.isEmpty) return const SizedBox.shrink();
+            if (controller.cudaInstallLog.value.isEmpty)
+              return const SizedBox.shrink();
             return Padding(
               padding: const EdgeInsets.only(top: 12),
               child: Column(
@@ -1478,43 +1717,61 @@ class HomePage extends GetView<HomeController> {
 
   Widget _buildEnvCard() {
     return _sectionCard(
-        title: '环境配置',
-        child: Obx(() {
-          final ready = controller.envReady.value;
-          final checking = controller.isChecking.value;
-          final installing = controller.isInstalling.value;
-          return Column(
+      title: '环境配置',
+      child: Obx(() {
+        final ready = controller.envReady.value;
+        final checking = controller.isChecking.value;
+        final installing = controller.isInstalling.value;
+        return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── 环境就绪状态栏 ──────────────────────────────────────
             if (checking)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
-                child: Row(children: [
-                  SizedBox(width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 12),
-                  Text('正在检测环境...', style: TextStyle(color: Color(0xFFB0B5BC))),
-                ]),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      '正在检测环境...',
+                      style: TextStyle(color: Color(0xFFB0B5BC)),
+                    ),
+                  ],
+                ),
               )
             else if (ready)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Row(
                   children: [
-                    Icon(Icons.check_circle, color: Colors.green[400], size: 22),
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.green[400],
+                      size: 22,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text('所有环境已就绪',
-                          style: TextStyle(color: Colors.green[400],
-                              fontSize: 15, fontWeight: FontWeight.w600)),
+                      child: Text(
+                        '所有环境已就绪',
+                        style: TextStyle(
+                          color: Colors.green[400],
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                     TextButton.icon(
                       onPressed: controller.checkEnvironment,
                       icon: const Icon(Icons.refresh, size: 16),
                       label: const Text('重新检测'),
                       style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF6B7280)),
+                        foregroundColor: const Color(0xFF6B7280),
+                      ),
                     ),
                   ],
                 ),
@@ -1528,18 +1785,29 @@ class HomePage extends GetView<HomeController> {
                     children: [
                       const Row(
                         children: [
-                          Icon(Icons.warning_amber_rounded,
-                              color: Color(0xFFFBBF24), size: 20),
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: Color(0xFFFBBF24),
+                            size: 20,
+                          ),
                           SizedBox(width: 8),
-                          Text('未检测到 UV，依赖将安装到项目目录',
-                              style: TextStyle(color: Color(0xFFFBBF24),
-                                  fontSize: 14, fontWeight: FontWeight.w500)),
+                          Text(
+                            '未检测到 UV，依赖将安装到项目目录',
+                            style: TextStyle(
+                              color: Color(0xFFFBBF24),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       const Text(
                         'UV 会创建 python_venv 虚拟环境，依赖装到项目目录，不占用 C 盘。',
-                        style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 12),
+                        style: TextStyle(
+                          color: Color(0xFFB0B5BC),
+                          fontSize: 12,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
@@ -1550,14 +1818,19 @@ class HomePage extends GetView<HomeController> {
                               : controller.installUv,
                           icon: controller.isUvInstalling.value
                               ? const SizedBox(
-                                  width: 20, height: 20,
+                                  width: 20,
+                                  height: 20,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white),
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
                                 )
                               : const Icon(Icons.download),
-                          label: Text(controller.isUvInstalling.value
-                              ? '安装中...'
-                              : '一键安装 UV'),
+                          label: Text(
+                            controller.isUvInstalling.value
+                                ? '安装中...'
+                                : '一键安装 UV',
+                          ),
                           style: _btnStyle(const Color(0xFF7C3AED)),
                         ),
                       ),
@@ -1578,7 +1851,11 @@ class HomePage extends GetView<HomeController> {
               const Text(
                 '以下依赖将安装到项目 python_venv 目录（不占 C 盘），点击「一键安装」：\n'
                 '(来源: github.com/Joluck/statetuning)',
-                style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 14, height: 1.5),
+                style: TextStyle(
+                  color: Color(0xFFB0B5BC),
+                  fontSize: 14,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 12),
               Container(
@@ -1595,8 +1872,11 @@ class HomePage extends GetView<HomeController> {
                   'tqdm>=4.65.0\n'
                   'huggingface-hub\n'
                   'ninja          [CUDA 扩展构建]',
-                  style: TextStyle(color: Color(0xFF86EFAC),
-                      fontSize: 12, fontFamily: 'monospace'),
+                  style: TextStyle(
+                    color: Color(0xFF86EFAC),
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -1604,11 +1884,18 @@ class HomePage extends GetView<HomeController> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: installing ? null : controller.installEnvironment,
+                      onPressed: installing
+                          ? null
+                          : controller.installEnvironment,
                       icon: installing
-                          ? const SizedBox(width: 20, height: 20,
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
                           : const Icon(Icons.install_desktop),
                       label: Text(installing ? '安装中...' : '一键安装'),
                       style: _btnStyle(const Color(0xFF3B82F6)),
@@ -1618,11 +1905,17 @@ class HomePage extends GetView<HomeController> {
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: (installing || checking)
-                          ? null : controller.checkEnvironment,
+                          ? null
+                          : controller.checkEnvironment,
                       icon: checking
-                          ? const SizedBox(width: 20, height: 20,
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
                           : const Icon(Icons.verified_user),
                       label: Text(checking ? '检测中...' : '检测环境'),
                       style: _btnStyle(const Color(0xFF6B7280)),
@@ -1636,16 +1929,17 @@ class HomePage extends GetView<HomeController> {
               const SizedBox(height: 16),
               _logLabel('检测结果'),
               const SizedBox(height: 8),
-              _logBox(controller.checkLog.value,
-                  placeholder: '正在检测环境...'),
+              _logBox(controller.checkLog.value, placeholder: '正在检测环境...'),
             ],
             // ── 安装日志（有内容时才显示）────────────────────────────
             if (controller.installLog.value.isNotEmpty) ...[
               const SizedBox(height: 16),
               _logLabel('安装日志'),
               const SizedBox(height: 8),
-              _logBox(controller.installLog.value,
-                  placeholder: '点击「一键安装」开始安装...'),
+              _logBox(
+                controller.installLog.value,
+                placeholder: '点击「一键安装」开始安装...',
+              ),
             ],
             const SizedBox(height: 24),
             const Divider(color: Color(0xFF3A3F47)),
@@ -1653,9 +1947,10 @@ class HomePage extends GetView<HomeController> {
             const Text(
               'CUDA 编译工具',
               style: TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600),
+                color: Color(0xFFE2E8F0),
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 6),
             const Text(
@@ -1665,24 +1960,31 @@ class HomePage extends GetView<HomeController> {
               '  • ninja  — 构建系统（pip 安装，几 MB）\n'
               '  • MSVC C++ 编译器 + Windows SDK（通过 winget 安装）',
               style: TextStyle(
-                  color: Color(0xFFB0B5BC), fontSize: 13, height: 1.6),
+                color: Color(0xFFB0B5BC),
+                fontSize: 13,
+                height: 1.6,
+              ),
             ),
             if (Platform.isWindows) ...[
               const SizedBox(height: 12),
-              Obx(() => _buildStatusRow(
-                    'ninja',
-                    controller.ninjaOnPath.value,
-                    description:
-                        '系统 PATH 或仓库内 python_venv\\Scripts\\ninja.exe（pip 安装）',
-                    onRetry: controller.detectBuildTools,
-                  )),
+              Obx(
+                () => _buildStatusRow(
+                  'ninja',
+                  controller.ninjaOnPath.value,
+                  description:
+                      '系统 PATH 或仓库内 python_venv\\Scripts\\ninja.exe（pip 安装）',
+                  onRetry: controller.detectBuildTools,
+                ),
+              ),
               const SizedBox(height: 10),
-              Obx(() => _buildStatusRow(
-                    'MSVC C++（cl.exe）',
-                    controller.msvcClOnPath.value,
-                    description: 'Visual Studio Build Tools：C++ 编译器与 Windows SDK',
-                    onRetry: controller.detectBuildTools,
-                  )),
+              Obx(
+                () => _buildStatusRow(
+                  'MSVC C++（cl.exe）',
+                  controller.msvcClOnPath.value,
+                  description: 'Visual Studio Build Tools：C++ 编译器与 Windows SDK',
+                  onRetry: controller.detectBuildTools,
+                ),
+              ),
             ],
             const SizedBox(height: 12),
             Obx(() {
@@ -1699,7 +2001,9 @@ class HomePage extends GetView<HomeController> {
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : Icon(
                           ready ? Icons.check_circle : Icons.build,
@@ -1709,13 +2013,11 @@ class HomePage extends GetView<HomeController> {
                     installing
                         ? '安装中...'
                         : ready
-                            ? '已安装（ninja + MSVC）'
-                            : '安装编译工具（ninja + MSVC）',
+                        ? '已安装（ninja + MSVC）'
+                        : '安装编译工具（ninja + MSVC）',
                   ),
                   style: _btnStyle(
-                    ready
-                        ? const Color(0xFF166534)
-                        : const Color(0xFF7C3AED),
+                    ready ? const Color(0xFF166534) : const Color(0xFF7C3AED),
                   ),
                 ),
               );
@@ -1723,11 +2025,15 @@ class HomePage extends GetView<HomeController> {
             const SizedBox(height: 12),
             _logLabel('编译工具安装日志'),
             const SizedBox(height: 8),
-            Obx(() => _logBox(controller.buildToolsLog.value,
-                placeholder: '点击「安装编译工具」开始安装...')),
+            Obx(
+              () => _logBox(
+                controller.buildToolsLog.value,
+                placeholder: '点击「安装编译工具」开始安装...',
+              ),
+            ),
           ],
         );
-        }), // end Obx
+      }), // end Obx
     );
   }
 
@@ -1745,11 +2051,14 @@ class HomePage extends GetView<HomeController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600)),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 16),
           child,
         ],
@@ -1769,8 +2078,10 @@ class HomePage extends GetView<HomeController> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(color: Color(0xFFB0B5BC), fontSize: 13)),
+        Text(
+          label,
+          style: const TextStyle(color: Color(0xFFB0B5BC), fontSize: 13),
+        ),
         const SizedBox(height: 6),
         Row(
           children: [
@@ -1782,12 +2093,16 @@ class HomePage extends GetView<HomeController> {
                 style: const TextStyle(color: Colors.white, fontSize: 14),
                 decoration: InputDecoration(
                   hintText: hint,
-                  hintStyle:
-                      const TextStyle(color: Color(0xFF4B5563), fontSize: 13),
+                  hintStyle: const TextStyle(
+                    color: Color(0xFF4B5563),
+                    fontSize: 13,
+                  ),
                   filled: true,
                   fillColor: const Color(0xFF1A1D21),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: const BorderSide(color: Color(0xFF3A3F47)),
@@ -1815,8 +2130,11 @@ class HomePage extends GetView<HomeController> {
                     onTap: onBrowse,
                     child: Padding(
                       padding: const EdgeInsets.all(12),
-                      child: Icon(browseIcon,
-                          color: const Color(0xFFB0B5BC), size: 20),
+                      child: Icon(
+                        browseIcon,
+                        color: const Color(0xFFB0B5BC),
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),
@@ -1828,8 +2146,11 @@ class HomePage extends GetView<HomeController> {
     );
   }
 
-  Widget _logBox(String text,
-      {double minHeight = 140, String placeholder = ''}) {
+  Widget _logBox(
+    String text, {
+    double minHeight = 140,
+    String placeholder = '',
+  }) {
     return Container(
       width: double.infinity,
       constraints: BoxConstraints(minHeight: minHeight),
@@ -1856,11 +2177,14 @@ class HomePage extends GetView<HomeController> {
   }
 
   Widget _logLabel(String text) {
-    return Text(text,
-        style: const TextStyle(
-            color: Color(0xFFB0B5BC),
-            fontSize: 13,
-            fontWeight: FontWeight.w500));
+    return Text(
+      text,
+      style: const TextStyle(
+        color: Color(0xFFB0B5BC),
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+      ),
+    );
   }
 
   ButtonStyle _btnStyle(Color color, {bool compact = false}) {
