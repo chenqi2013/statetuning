@@ -496,7 +496,7 @@ class HomeController extends GetxController {
     final path = result?.files.single.path;
     if (path != null) {
       testStatePathController.text = path;
-      Get.snackbar('提示', '当前测试仅支持 .pth，state 文件暂未接入');
+      // Get.snackbar('提示', '当前测试仅支持 .pth，state 文件暂未接入');
     }
   }
 
@@ -556,6 +556,10 @@ class HomeController extends GetxController {
         rwkvStatus.value = '模型已加载 (ID: $_rwkvModelId)';
         _appendRwkvLog('模型加载完成，modelID=$_rwkvModelId');
         _rwkvLoadCompleter?.complete();
+        _rwkvSendPort?.send(
+          LoadInitialStates(testStatePath.value, modelID: _rwkvModelId!),
+        );
+        debugPrint('LoadInitialStates: ${testStatePath.value}');
       } else if (message.status == LoadingStatus.failedInLoading) {
         isRwkvLoading.value = false;
         rwkvStatus.value = '模型加载失败';
