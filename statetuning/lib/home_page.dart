@@ -8,7 +8,7 @@ import 'home_controller.dart';
 import 'l10n/app_locale.dart';
 
 String _presetDisplayLabel(String label) =>
-    label == '自定义' ? 'preset_custom'.tr : label;
+    label == kCustomPresetLabel ? 'preset_custom'.tr : label;
 
 class HomePage extends GetView<HomeController> {
   const HomePage({super.key});

@@ -12,6 +12,9 @@ import 'package:rwkv_mobile_flutter/rwkv.dart';
 
 enum TrainingPrecision { bf16, fp16, fp32 }
 
+/// Locale-neutral id for the custom model preset (display via [preset_custom].tr).
+const String kCustomPresetLabel = '__custom__';
+
 /// pip/uv/winget 等在中文 Windows 下可能输出 GBK；`Process` 用严格 UTF-8 解码会抛 FormatException。
 const Utf8Codec _processUtf8AllowMalformed = Utf8Codec(allowMalformed: true);
 
@@ -42,7 +45,7 @@ class HomeController extends GetxController {
     Rwkv7Preset('RWKV7-1.5B', 2048, 24),
     Rwkv7Preset('RWKV7-3B', 2560, 32),
     Rwkv7Preset('RWKV7-7B', 4096, 32),
-    Rwkv7Preset('自定义', 0, 0),
+    Rwkv7Preset(kCustomPresetLabel, 0, 0),
   ];
   final selectedPreset = 'RWKV7-0.4B'.obs;
 
@@ -515,7 +518,7 @@ class HomeController extends GetxController {
     if (_rwkvSendPort != null) return;
     final rootToken = RootIsolateToken.instance;
     if (rootToken == null) {
-      throw Exception('RootIsolateToken 不可用，无法启动 RWKV runtime');
+      throw Exception('err_rwkv_root_token'.tr);
     }
 
     _rwkvReceivePort = ReceivePort();
@@ -529,7 +532,7 @@ class HomeController extends GetxController {
     final start = DateTime.now();
     while (_rwkvSendPort == null) {
       if (DateTime.now().difference(start) > const Duration(seconds: 8)) {
-        throw Exception('RWKV runtime 启动超时');
+        throw Exception('err_rwkv_start_timeout'.tr);
       }
       await Future<void>.delayed(const Duration(milliseconds: 80));
     }
@@ -571,7 +574,9 @@ class HomeController extends GetxController {
       } else if (message.status == LoadingStatus.failedInLoading) {
         isRwkvLoading.value = false;
         rwkvStatus.value = 'rwkv_status_load_failed'.tr;
-        _rwkvLoadCompleter?.completeError(Exception(message.info ?? '加载失败'));
+        _rwkvLoadCompleter?.completeError(
+          Exception(message.info ?? 'err_rwkv_load_failed'.tr),
+        );
       }
       return;
     }
@@ -630,7 +635,7 @@ class HomeController extends GetxController {
     try {
       await _ensureRwkvRuntime();
       final send = _rwkvSendPort;
-      if (send == null) throw Exception('RWKV runtime 未就绪');
+      if (send == null) throw Exception('err_rwkv_not_ready'.tr);
 
       if (_rwkvModelId != null) {
         send.send(ReleaseRWKVModel(modelID: _rwkvModelId!));
@@ -916,7 +921,9 @@ class HomeController extends GetxController {
 
       if (updated != original) {
         await rwkvop.writeAsString(updated);
-        _appendLogData('[BUILD] 已修复 rwkvop.py: ${changes.join(', ')}\n');
+        _appendLogData(
+          'log_build_rwkvop_fixed'.trParams({'changes': changes.join(', ')}),
+        );
       }
     }
 
@@ -930,7 +937,9 @@ class HomeController extends GetxController {
             (entity.path.endsWith('${sep}rwkv7_state_clampw') ||
                 entity.path.endsWith('${sep}rwkv7_clampw'))) {
           await entity.delete(recursive: true);
-          _appendLogData('[BUILD] 已清理旧编译缓存: ${entity.path}\n');
+          _appendLogData(
+            'log_build_cache_cleared'.trParams({'path': entity.path}),
+          );
         }
       }
     }
@@ -969,7 +978,7 @@ class HomeController extends GetxController {
 
   /// 自动查找 CUDA 安装路径（Windows 常见位置 + 环境变量）
   Future<void> detectCudaHome() async {
-    cudaDetectLog.value = '▶ 正在检测 CUDA 安装路径...\n';
+    cudaDetectLog.value = 'log_cuda_detect_start'.tr;
 
     // 1. 先读系统环境变量
     final envCuda =
@@ -980,7 +989,7 @@ class HomeController extends GetxController {
       );
       if (await nvcc.exists()) {
         _setCudaHome(envCuda);
-        cudaDetectLog.value += '✓ 从环境变量检测到: $envCuda\n';
+        cudaDetectLog.value += 'log_cuda_found_env'.trParams({'path': envCuda});
         return;
       }
     }
@@ -1013,7 +1022,8 @@ class HomeController extends GetxController {
         );
         if (await nvcc.exists()) {
           _setCudaHome(latest);
-          cudaDetectLog.value += '✓ 自动检测到: $latest\n';
+          cudaDetectLog.value +=
+              'log_cuda_found_auto'.trParams({'path': latest});
           return;
         }
       }
@@ -1033,14 +1043,12 @@ class HomeController extends GetxController {
         // nvccPath = C:\...\CUDA\v12.x\bin\nvcc.exe  → 取上两级
         final home = File(nvccPath).parent.parent.path;
         _setCudaHome(home);
-        cudaDetectLog.value += '✓ 从 nvcc 命令检测到: $home\n';
+        cudaDetectLog.value += 'log_cuda_found_nvcc'.trParams({'path': home});
         return;
       }
     } catch (_) {}
 
-    cudaDetectLog.value +=
-        '✗ 未自动检测到 CUDA，请手动选择安装目录或点击「一键安装 CUDA」\n'
-        '  常见路径: C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.x 或 v13.x\n';
+    cudaDetectLog.value += 'log_cuda_not_found'.tr;
     cudaInstalled.value = false;
   }
 
@@ -1098,7 +1106,7 @@ class HomeController extends GetxController {
     );
     if (path != null) {
       _setCudaHome(path);
-      cudaDetectLog.value = '✓ 手动设置: $path\n';
+      cudaDetectLog.value = 'log_cuda_manual_set'.trParams({'path': path});
     }
   }
 
@@ -1121,11 +1129,7 @@ class HomeController extends GetxController {
     isCudaInstalling.value = true;
     cudaInstallLog.value = '';
     try {
-      cudaInstallLog.value =
-          '▶ 正在通过 winget 安装 CUDA 最新版...\n'
-          '  包: Nvidia.CUDA（自动选择最新版本）\n'
-          '  系统会弹出 UAC 权限提示，请点击「是」\n'
-          '  安装过程可能需 5–15 分钟，请耐心等待\n\n';
+      cudaInstallLog.value = 'log_cuda_install_start'.tr;
       final result = await Process.run(
         'winget',
         [
@@ -1146,8 +1150,9 @@ class HomeController extends GetxController {
       if (out.isNotEmpty) cudaInstallLog.value += '$out\n';
       if (err.isNotEmpty) cudaInstallLog.value += '$err\n';
       cudaInstallLog.value += result.exitCode == 0
-          ? '\n✓ CUDA 安装完成！请点击「自动检测」刷新路径，或重启应用。'
-          : '\n✗ 安装失败 (exit: ${result.exitCode})，可尝试从 NVIDIA 官网手动下载安装。';
+          ? 'log_cuda_install_done'.tr
+          : 'log_cuda_install_fail'
+                .trParams({'code': '${result.exitCode}'});
       if (result.exitCode == 0) {
         await detectCudaHome();
         Get.snackbar(
@@ -1158,7 +1163,7 @@ class HomeController extends GetxController {
         );
       }
     } catch (e) {
-      cudaInstallLog.value += '\n✗ 执行出错: $e';
+      cudaInstallLog.value += 'log_line_exec_error'.trParams({'e': '$e'});
       Get.snackbar('snackbar_install_failed'.tr, '$e');
     } finally {
       isCudaInstalling.value = false;
@@ -1259,7 +1264,7 @@ class HomeController extends GetxController {
         nLayerController.text = '$detectedLayers';
       }
       if (detectedEmbd > 0 || detectedVocab > 0 || detectedLayers > 0) {
-        selectedPreset.value = '自定义';
+        selectedPreset.value = kCustomPresetLabel;
         Get.snackbar(
           'snackbar_model_shape_ok'.tr,
           'snackbar_model_shape_ok_detail'.trParams({
@@ -1320,11 +1325,11 @@ class HomeController extends GetxController {
     );
     if (await trainFile.exists()) {
       repoCloned.value = true;
-      repoLog.value = '✓ 仓库已就绪: ${repoPath.value}';
+      repoLog.value = 'log_repo_ready'.trParams({'path': repoPath.value});
       await detectBuildTools();
     } else {
       repoCloned.value = false;
-      repoLog.value = '✗ 路径下未找到 train.py，请克隆仓库';
+      repoLog.value = 'log_repo_no_train_py'.tr;
     }
   }
 
@@ -1363,9 +1368,7 @@ class HomeController extends GetxController {
     isGitInstalling.value = true;
     gitInstallLog.value = '';
     try {
-      gitInstallLog.value =
-          '▶ 正在通过 winget 安装 Git...\n'
-          '  系统会弹出 UAC 权限提示，请点击「是」\n\n';
+      gitInstallLog.value = 'log_git_install_start'.tr;
       final result = await Process.run(
         'winget',
         [
@@ -1386,8 +1389,8 @@ class HomeController extends GetxController {
       if (out.isNotEmpty) gitInstallLog.value += '$out\n';
       if (err.isNotEmpty) gitInstallLog.value += '$err\n';
       gitInstallLog.value += result.exitCode == 0
-          ? '\n✓ Git 安装完成！请点击「检测 Git」或重启应用。'
-          : '\n✗ 安装失败 (exit: ${result.exitCode})，可从 https://git-scm.com 手动下载安装。';
+          ? 'log_git_install_done'.tr
+          : 'log_git_install_fail'.trParams({'code': '${result.exitCode}'});
       if (result.exitCode == 0) {
         await detectGit();
         Get.snackbar(
@@ -1398,7 +1401,7 @@ class HomeController extends GetxController {
         );
       }
     } catch (e) {
-      gitInstallLog.value += '\n✗ 执行出错: $e';
+      gitInstallLog.value += 'log_line_exec_error'.trParams({'e': '$e'});
       Get.snackbar('snackbar_install_failed'.tr, '$e');
     } finally {
       isGitInstalling.value = false;
@@ -1421,7 +1424,7 @@ class HomeController extends GetxController {
         repoPath.value = defaultPath;
         repoPathController.text = defaultPath;
         repoCloned.value = true;
-        repoLog.value = '✓ 仓库已就绪: $defaultPath';
+        repoLog.value = 'log_repo_ready'.trParams({'path': defaultPath});
         await detectBuildTools();
         return;
       }
@@ -1442,7 +1445,7 @@ class HomeController extends GetxController {
     if (!managedByCaller && isCloningRepo.value) return;
     if (!managedByCaller) isCloningRepo.value = true;
     repoCloned.value = false;
-    repoLog.value = '正在解压内置仓库到 $targetPath ...\n';
+    repoLog.value = 'log_repo_extracting'.trParams({'path': targetPath});
     try {
       final dir = Directory(targetPath);
       if (!await dir.exists()) await dir.create(recursive: true);
@@ -1472,10 +1475,10 @@ class HomeController extends GetxController {
         }
       }
       repoCloned.value = true;
-      repoLog.value += '\n✓ 仓库就绪！';
+      repoLog.value += 'log_repo_ready_done'.tr;
       await checkRepo();
     } catch (e) {
-      repoLog.value += '异常: $e';
+      repoLog.value += 'log_repo_error'.trParams({'e': '$e'});
     } finally {
       if (!managedByCaller) isCloningRepo.value = false;
     }
@@ -1873,14 +1876,13 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         '--ctx_len',
         '${ctxLen.value}',
       ];
-      final windowsHint = Platform.isWindows
-          ? 'Windows: 训练前将自动调用 vcvarsall.bat 初始化 MSVC 环境。\n'
-          : '';
+      final windowsHint =
+          Platform.isWindows ? 'log_train_vcvars_hint'.tr : '';
       _appendLogData(
-        '✓ 直接运行仓库 train.py\n'
-        '命令: $py ${args.join(' ')}\n'
+        '${'log_train_run_intro'.tr}'
+        '${'log_train_cmd'.trParams({'cmd': '$py ${args.join(' ')}'})}'
         '$windowsHint'
-        '说明: ${supportsNumSteps ? "已传入 num_steps 参数。" : "当前仓库 train.py 不支持 num_steps，已忽略该 UI 字段。"}\n'
+        '${supportsNumSteps ? 'log_train_note_num_steps_yes'.tr : 'log_train_note_num_steps_no'.tr}'
         '${'=' * 50}\n\n',
       );
       trainingLog.value = _buildLogDisplay();
@@ -1908,7 +1910,9 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             '${_cmdQuote(py)} ${args.map(_cmdQuote).join(' ')}',
           ].join('\r\n');
           await File(launcherPath).writeAsString(launcherContent);
-          _appendLogData('[BUILD] Windows 启动器: $launcherPath\n');
+          _appendLogData(
+            'log_train_windows_launcher'.trParams({'path': launcherPath}),
+          );
           trainingLog.value = _buildLogDisplay();
           _trainingProcess = await Process.start(
             launcherPath,
@@ -1918,9 +1922,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             runInShell: true,
           );
         } else {
-          _appendLogData(
-            '[BUILD] WARNING: 未找到 vcvarsall.bat，改为直接启动 train.py\n',
-          );
+          _appendLogData('log_train_vcvars_missing'.tr);
           trainingLog.value = _buildLogDisplay();
           _trainingProcess = await Process.start(
             py,
@@ -1961,8 +1963,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         _logFlushTimer = null;
         // 最终刷新一次，确保末尾日志完整显示
         final suffix = code == 0
-            ? '\n${'=' * 50}\n✓ 训练成功完成！\n'
-            : '\n✗ 训练异常退出 (exit: $code)\n';
+            ? 'log_train_success_footer'.tr
+            : 'log_train_fail_exit'.trParams({'code': '$code'});
         _appendLogData(suffix);
         trainingLog.value = _buildLogDisplay();
 
@@ -1986,7 +1988,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     } catch (e) {
       _logFlushTimer?.cancel();
       _logFlushTimer = null;
-      _appendLogData('启动失败: $e\n');
+      _appendLogData('log_train_start_fail'.trParams({'e': '$e'}));
       trainingLog.value = _buildLogDisplay();
       isTraining.value = false;
       status.value = 'status_idle'.tr;
@@ -2077,7 +2079,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       ], runInShell: true);
       _trainingProcess = null;
     }
-    _appendLogData('\n⏹ 训练已手动停止\n');
+    _appendLogData('log_train_stopped_manual'.tr);
     trainingLog.value = _buildLogDisplay();
     isTraining.value = false;
     status.value = 'status_stopped'.tr;
@@ -2144,10 +2146,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     isUvInstalling.value = true;
     uvInstallLog.value = '';
     try {
-      uvInstallLog.value =
-          '▶ 正在通过 winget 安装 UV...\n'
-          '  包: astral-sh.uv\n'
-          '  系统会弹出 UAC 权限提示，请点击「是」\n\n';
+      uvInstallLog.value = 'log_uv_install_start'.tr;
       final result = await Process.run(
         'winget',
         [
@@ -2168,8 +2167,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       if (out.isNotEmpty) uvInstallLog.value += '$out\n';
       if (err.isNotEmpty) uvInstallLog.value += '$err\n';
       uvInstallLog.value += result.exitCode == 0
-          ? '\n✓ UV 安装完成！请重启应用。'
-          : '\n✗ 安装失败 (exit: ${result.exitCode})';
+          ? 'log_uv_install_done'.tr
+          : 'log_uv_install_fail'.trParams({'code': '${result.exitCode}'});
       if (result.exitCode == 0) {
         await detectUv();
         Get.snackbar(
@@ -2181,7 +2180,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       }
       return false;
     } catch (e) {
-      uvInstallLog.value += '\n✗ 执行出错: $e';
+      uvInstallLog.value += 'log_line_exec_error'.trParams({'e': '$e'});
       Get.snackbar('snackbar_install_failed'.tr, '$e');
       return false;
     } finally {
@@ -2238,10 +2237,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     isPythonInstalling.value = true;
     pythonInstallLog.value = '';
     try {
-      pythonInstallLog.value =
-          '▶ 正在通过 winget 安装 Python 3.12...\n'
-          '  系统会弹出 UAC 权限提示，请点击「是」\n'
-          '  安装完成后请重启本应用，以便识别新安装的 Python\n\n';
+      pythonInstallLog.value = 'log_python_install_start'.tr;
       final result = await Process.run(
         'winget',
         [
@@ -2262,8 +2258,9 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       if (out.isNotEmpty) pythonInstallLog.value += '$out\n';
       if (err.isNotEmpty) pythonInstallLog.value += '$err\n';
       pythonInstallLog.value += result.exitCode == 0
-          ? '\n✓ Python 3.12 安装完成！\n  请关闭并重新打开本应用，然后点击「一键安装」安装依赖包。'
-          : '\n✗ 安装失败 (exit: ${result.exitCode})，可从 https://www.python.org 手动下载安装。';
+          ? 'log_python_install_done'.tr
+          : 'log_python_install_fail'
+                .trParams({'code': '${result.exitCode}'});
       if (result.exitCode == 0) {
         await detectPython();
         Get.snackbar(
@@ -2276,7 +2273,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       }
       return false;
     } catch (e) {
-      pythonInstallLog.value += '\n✗ 执行出错: $e';
+      pythonInstallLog.value += 'log_line_exec_error'.trParams({'e': '$e'});
       Get.snackbar('snackbar_install_failed'.tr, '$e');
       return false;
     } finally {
@@ -2295,23 +2292,24 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
     try {
       // ── 1. 检测 UV ───────────────────────────────────────────────
-      installLog.value += '▶ 检测 UV（虚拟环境工具）...\n';
+      installLog.value += 'log_install_check_uv'.tr;
       await detectUv();
       if (!uvInstalled.value) {
-        installLog.value += '✗ 未找到 UV，正在自动安装...\n\n';
+        installLog.value += 'log_install_uv_missing'.tr;
         final ok = await installUv();
-        if (ok) installLog.value += '\n→ 请重启应用后再次点击「一键安装」。\n';
+        if (ok) installLog.value += 'log_install_restart_tap_install'.tr;
         return;
       }
-      installLog.value += '✓ UV 已安装\n';
-      installLog.value += '  依赖将安装到项目目录: ${repoPath.value}/python_venv\n\n';
+      installLog.value += 'log_install_uv_ok'.tr;
+      installLog.value +=
+          'log_install_deps_to'.trParams({'repo': repoPath.value});
 
       // ── 2. 创建/确认 venv ───────────────────────────────────────
       final venvDir = '${repoPath.value}${Platform.pathSeparator}python_venv';
       final venvPy =
           '$venvDir${Platform.pathSeparator}Scripts${Platform.pathSeparator}python.exe';
       if (!await File(venvPy).exists()) {
-        installLog.value += '▶ 创建虚拟环境 python_venv（Python 3.12）...\n';
+        installLog.value += 'log_install_create_venv'.tr;
         final venvResult = await Process.run(
           'uv',
           ['venv', './python_venv', '--python', '3.12'],
@@ -2321,13 +2319,13 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           stderrEncoding: utf8,
         );
         if (venvResult.exitCode != 0) {
-          installLog.value += '✗ 创建 venv 失败\n';
+          installLog.value += 'log_install_venv_fail'.tr;
           installLog.value += '${venvResult.stderr}\n';
           return;
         }
-        installLog.value += '✓ 虚拟环境已创建\n\n';
+        installLog.value += 'log_install_venv_created'.tr;
       } else {
-        installLog.value += '✓ 虚拟环境已存在: python_venv\n\n';
+        installLog.value += 'log_install_venv_exists'.tr;
       }
 
       // ── 3. 安装依赖包（使用 uv pip，目标 venv）──────────────────
@@ -2335,17 +2333,17 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       final torchWheelTag = _getCudaWheelTag();
       final torchIndexUrl = 'https://download.pytorch.org/whl/$torchWheelTag';
       installLog.value +=
-          '▶ 将安装 GPU (CUDA) torch，根据当前 CUDA 配置: $torchWheelTag\n\n';
+          'log_install_torch_cuda'.trParams({'tag': torchWheelTag});
 
       final venvPython = './python_venv/Scripts/python.exe';
       final failed = <String>[];
 
       for (final pkg in _envPackages) {
         installLog.value += '─' * 50 + '\n';
-        installLog.value += '▶ 安装 $pkg ...\n';
+        installLog.value += 'log_install_pkg_line'.trParams({'pkg': pkg});
 
         if (pkg.startsWith('torch')) {
-          installLog.value += '  从 PyTorch GPU 源下载（约 1–2 GB）...\n';
+          installLog.value += 'log_install_torch_download'.tr;
           // 优先用 UV --torch-backend（UV 0.5.3+），可正确解析依赖；若失败则回退到 venv 的 pip
           var result = await Process.run(
             'uv',
@@ -2371,7 +2369,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           }
 
           if (result.exitCode != 0) {
-            installLog.value += '\n  UV 安装 torch 失败，尝试使用 pip 回退...\n';
+            installLog.value += 'log_install_torch_pip_fallback'.tr;
             // pip + --index-url：必须用 PyTorch GPU 索引才能装到 CUDA 版，否则会从 PyPI 装到 CPU 版
             result = await Process.run(
               venvPython,
@@ -2390,10 +2388,12 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           }
 
           if (result.exitCode == 0) {
-            installLog.value += '✓ $pkg 安装成功\n\n';
+            installLog.value +=
+                'log_install_pkg_ok'.trParams({'pkg': pkg});
           } else {
             failed.add(pkg);
-            installLog.value += '\n✗ $pkg 安装失败 (exit: ${result.exitCode})\n\n';
+            installLog.value += 'log_install_pkg_fail'
+                .trParams({'pkg': pkg, 'code': '${result.exitCode}'});
           }
         } else {
           final result = await Process.run(
@@ -2412,10 +2412,12 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           }
 
           if (result.exitCode == 0) {
-            installLog.value += '✓ $pkg 安装成功\n\n';
+            installLog.value +=
+                'log_install_pkg_ok'.trParams({'pkg': pkg});
           } else {
             failed.add(pkg);
-            installLog.value += '\n✗ $pkg 安装失败 (exit: ${result.exitCode})\n\n';
+            installLog.value += 'log_install_pkg_fail'
+                .trParams({'pkg': pkg, 'code': '${result.exitCode}'});
           }
         }
       }
@@ -2423,11 +2425,11 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       // ── 4. 汇总结果 ───────────────────────────────────────────────
       installLog.value += '=' * 50 + '\n';
       if (failed.isEmpty) {
-        installLog.value += '✓ 全部依赖安装完成！\n';
+        installLog.value += 'log_install_all_done'.tr;
         Get.snackbar('snackbar_install_ok'.tr, 'snackbar_install_ok_body'.tr);
         await checkEnvironment();
       } else {
-        installLog.value += '✗ 以下包安装失败，请查看上方日志：\n';
+        installLog.value += 'log_install_failed_pkgs'.tr;
         for (final f in failed) {
           installLog.value += '   • $f\n';
         }
@@ -2438,7 +2440,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         );
       }
     } catch (e) {
-      installLog.value += '\n异常: $e';
+      installLog.value += 'log_install_exception'.trParams({'e': '$e'});
       Get.snackbar('snackbar_install_failed'.tr, '$e');
     } finally {
       isInstalling.value = false;
@@ -2523,10 +2525,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     try {
       await detectBuildTools();
       if (buildToolsFullyReady.value) {
-        buildToolsLog.value =
-            '✓ ninja 已在 PATH 中\n'
-            '✓ MSVC cl.exe 已在 PATH 中\n'
-            '编译工具已就绪，无需重复安装。\n';
+        buildToolsLog.value = 'log_buildtools_ready_msg'.tr;
         Get.snackbar(
           'snackbar_buildtools_ready'.tr,
           'snackbar_buildtools_ready_body'.tr,
@@ -2537,7 +2536,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
       // ── 1. ninja（未在 PATH 时再 pip 安装）────────────────────────
       if (!ninjaOnPath.value) {
-        buildToolsLog.value += '▶ 安装 ninja 构建工具...\n';
+        buildToolsLog.value += 'log_buildtools_install_ninja'.tr;
         final useUv = repoPath.value.isNotEmpty && uvInstalled.value;
         final ninjaResult = await Process.run(
           useUv ? 'uv' : 'pip',
@@ -2560,11 +2559,11 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         if (ninjaOut.isNotEmpty) buildToolsLog.value += '$ninjaOut\n';
         if (ninjaErr.isNotEmpty) buildToolsLog.value += '$ninjaErr\n';
         buildToolsLog.value += ninjaResult.exitCode == 0
-            ? '✓ ninja 安装成功\n\n'
-            : '✗ ninja 安装失败\n\n';
+            ? 'log_buildtools_ninja_ok'.tr
+            : 'log_buildtools_ninja_fail'.tr;
         await detectBuildTools();
         if (buildToolsFullyReady.value) {
-          buildToolsLog.value += '✓ ninja 与 MSVC 均已就绪，无需继续安装。\n';
+          buildToolsLog.value += 'log_buildtools_ninja_msvc_done'.tr;
           Get.snackbar(
             'snackbar_buildtools_ready'.tr,
             'snackbar_buildtools_ready_body'.tr,
@@ -2573,9 +2572,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           return;
         }
       } else {
-        buildToolsLog.value +=
-            '▶ ninja\n'
-            '✓ 已在 PATH 中（跳过 pip 安装）\n\n';
+        buildToolsLog.value += 'log_buildtools_ninja_on_path'.tr;
       }
 
       // ── 2. 是否已有 cl.exe ───────────────────────────────────────
@@ -2587,9 +2584,9 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           stdoutEncoding: _processUtf8AllowMalformed,
           stderrEncoding: _processUtf8AllowMalformed,
         );
-        buildToolsLog.value +=
-            '✓ 已检测到 MSVC cl.exe，无需重复安装\n'
-            '  ${(clCheck.stdout as String).trim()}\n';
+        buildToolsLog.value += 'log_buildtools_msvc_found'.trParams({
+          'path': (clCheck.stdout as String).trim(),
+        });
         Get.snackbar(
           'snackbar_buildtools_ready'.tr,
           'snackbar_buildtools_msvc_ok'.tr,
@@ -2599,7 +2596,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       }
 
       if (!wingetInstalled.value && Platform.isWindows) {
-        buildToolsLog.value += '✗ 安装 MSVC 需先安装 winget，详见设置页顶部「应用安装程序」\n';
+        buildToolsLog.value += 'log_buildtools_need_winget'.tr;
         Get.snackbar(
           'need_winget_for_install_title'.tr,
           'snackbar_need_winget_msvc'.tr,
@@ -2610,8 +2607,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       }
 
       if (!Platform.isWindows) {
-        buildToolsLog.value +=
-            '✗ 非 Windows 系统请自行安装 C++ 编译器（如 gcc/clang）并确保与 CUDA 配套。\n';
+        buildToolsLog.value += 'log_buildtools_non_windows'.tr;
         Get.snackbar(
           'tip'.tr,
           'snackbar_non_windows_msvc'.tr,
@@ -2621,10 +2617,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       }
 
       // ── 3. 用 winget 安装最小化 MSVC（仅编译器 + Windows SDK）────
-      buildToolsLog.value +=
-          '▶ 正在通过 winget 安装 MSVC C++ 编译器...\n'
-          '  仅安装编译器组件，约 1.5 GB（无 IDE）\n'
-          '  系统将弹出 UAC 权限提示，请点击「是」\n\n';
+      buildToolsLog.value += 'log_buildtools_msvc_install_start'.tr;
 
       final msvcResult = await Process.run(
         'winget',
@@ -2649,9 +2642,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
 
       final msvcCode = msvcResult.exitCode;
       if (msvcCode == 0) {
-        buildToolsLog.value +=
-            '\n✓ MSVC 编译工具安装完成！\n'
-            '  请重启应用后重新运行训练\n';
+        buildToolsLog.value += 'log_buildtools_msvc_done'.tr;
         Get.snackbar(
           'snackbar_install_done_short'.tr,
           'snackbar_msvc_installed'.tr,
@@ -2660,9 +2651,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         );
       } else if (msvcCode == _wingetUpdateNotApplicable) {
         // 已安装 Build Tools 且无新版本时 winget 仍报错码，按「已就绪」处理并复查 cl
-        buildToolsLog.value +=
-            '\n✓ winget：本机已安装 Visual Studio Build Tools，且无可用升级（退出码属正常）\n'
-            '  正在复查 cl.exe 是否在 PATH 中...\n';
+        buildToolsLog.value += 'log_buildtools_winget_no_upgrade'.tr;
         final clAfter = await Process.run(
           'where',
           ['cl'],
@@ -2671,9 +2660,9 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           stderrEncoding: _processUtf8AllowMalformed,
         );
         if (clAfter.exitCode == 0) {
-          buildToolsLog.value +=
-              '✓ 已检测到 cl.exe，可直接编译 CUDA 扩展\n'
-              '  ${(clAfter.stdout as String).trim()}\n';
+          buildToolsLog.value += 'log_buildtools_cl_ok'.trParams({
+            'path': (clAfter.stdout as String).trim(),
+          });
           Get.snackbar(
             'snackbar_buildtools_ready'.tr,
             'msvc_ready_to_train'.tr,
@@ -2681,12 +2670,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             duration: const Duration(seconds: 5),
           );
         } else {
-          buildToolsLog.value +=
-              '⚠ 仍未在 PATH 中找到 cl.exe。\n'
-              '  请打开「Visual Studio Installer」→ 修改 Build Tools，\n'
-              '  确保勾选「使用 C++ 的桌面开发」或 MSVC v143 + Windows SDK，\n'
-              '  安装完成后重启本应用或从「x64 Native Tools Command Prompt」验证 where cl。\n'
-              '  手动下载： https://aka.ms/vs/17/release/vs_buildtools.exe\n';
+          buildToolsLog.value += 'log_buildtools_cl_missing'.tr;
           Get.snackbar(
             'snackbar_msvc_partial'.tr,
             'snackbar_msvc_partial_body'.tr,
@@ -2695,11 +2679,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           );
         }
       } else {
-        buildToolsLog.value +=
-            '\n✗ winget 安装失败 (exit: $msvcCode)\n'
-            '  请手动下载 VS Build Tools（免费，仅选 C++ 编译器）：\n'
-            '  https://aka.ms/vs/17/release/vs_buildtools.exe\n'
-            '  安装时只勾选 "MSVC v143" 和 "Windows SDK" 两项即可\n';
+        buildToolsLog.value += 'log_buildtools_winget_fail'
+            .trParams({'code': '$msvcCode'});
         Get.snackbar(
           'error'.tr,
           'snackbar_msvc_failed'.tr,
@@ -2708,7 +2689,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         );
       }
     } catch (e) {
-      buildToolsLog.value += '异常: $e\n';
+      buildToolsLog.value += 'log_buildtools_exception'.trParams({'e': '$e'});
       Get.snackbar('snackbar_install_failed'.tr, '$e');
     } finally {
       isBuildToolsInstalling.value = false;
@@ -2719,7 +2700,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   Future<void> checkEnvironment() async {
     if (isChecking.value) return;
     isChecking.value = true;
-    checkLog.value = '正在检测环境...\n';
+    checkLog.value = 'log_env_checking'.tr;
     envReady.value = false;
     try {
       // 先检测 UV 和 Python（项目 venv 或系统）
@@ -2727,12 +2708,11 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       await detectPython();
       final py = _venvPythonPath ?? 'python';
       if (!pythonInstalled.value) {
-        checkLog.value +=
-            '✗ 未找到可用 Python\n'
-            '  请点击「一键安装」安装 UV 并创建项目虚拟环境\n\n';
+        checkLog.value += 'log_env_no_python'.tr;
       } else {
-        checkLog.value +=
-            '✓ 使用: ${_venvPythonPath != null ? "项目 venv (python_venv)" : "系统 Python"}\n';
+        checkLog.value += _venvPythonPath != null
+            ? 'log_env_using_venv'.tr
+            : 'log_env_using_system'.tr;
       }
       final missing = <String>[];
       bool torchHasCuda = false;
@@ -2740,7 +2720,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         for (final pkg in _envCheckPackages) {
           missing.add(pkg);
         }
-        checkLog.value += '\n缺少: ${missing.join(", ")}';
+        checkLog.value +=
+            'log_env_missing_line'.trParams({'list': missing.join(', ')});
         Get.snackbar(
           'snackbar_env_check'.tr,
           'snackbar_env_use_install'.tr,
@@ -2778,16 +2759,16 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             );
           }
           if (result.exitCode == 0) {
-            checkLog.value += '✓ $pkg 已安装\n';
+            checkLog.value += 'log_env_pkg_installed'.trParams({'pkg': pkg});
           } else {
-            checkLog.value += '✗ $pkg 未安装\n';
+            checkLog.value += 'log_env_pkg_missing'.trParams({'pkg': pkg});
             missing.add(pkg);
           }
         }
 
         // 额外检测 torch 是否为 GPU (CUDA) 版本
         if (!missing.contains('torch')) {
-          checkLog.value += '\n▶ 检测 torch CUDA 支持...\n';
+          checkLog.value += 'log_env_torch_cuda_check'.tr;
           final cudaCheck = await Process.run(
             py,
             [
@@ -2806,12 +2787,14 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           final cudaOut = (cudaCheck.stdout as String).trim();
           if (cudaCheck.exitCode == 0) {
             torchHasCuda = true;
-            checkLog.value += '✓ torch GPU (CUDA) 版本正常  [$cudaOut]\n';
+            checkLog.value += 'log_env_torch_cuda_ok'
+                .trParams({'detail': cudaOut});
           } else {
-            checkLog.value +=
-                '✗ torch 未检测到 CUDA GPU 支持\n'
-                '  请更新 NVIDIA 显卡驱动至最新版本，或使用支持 CUDA 13.0 的驱动\n';
-            if (cudaOut.isNotEmpty) checkLog.value += '  详情: $cudaOut\n';
+            checkLog.value += 'log_env_torch_no_cuda'.tr;
+            if (cudaOut.isNotEmpty) {
+              checkLog.value +=
+                  'log_env_torch_detail'.trParams({'detail': cudaOut});
+            }
             missing.add('torch(CUDA)');
           }
         }
@@ -2819,14 +2802,15 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         if (missing.isEmpty) {
           envReady.value = true;
           _detectGpu();
-          checkLog.value += '\n所有环境已经准备好';
+          checkLog.value += 'log_env_all_ready'.tr;
           Get.snackbar(
             'snackbar_env_check'.tr,
             'snackbar_env_ready'.tr,
             snackPosition: SnackPosition.TOP,
           );
         } else {
-          checkLog.value += '\n缺少或需重装: ${missing.join(", ")}';
+          checkLog.value += 'log_env_missing_reinstall'
+              .trParams({'list': missing.join(', ')});
           if (!_hasGuidedToSettings) {
             _hasGuidedToSettings = true;
             currentTabIndex.value = 5;
@@ -2842,7 +2826,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         }
       }
     } catch (e) {
-      checkLog.value += '检测异常: $e';
+      checkLog.value += 'log_env_check_exception'.trParams({'e': '$e'});
     } finally {
       isChecking.value = false;
       if (Platform.isWindows) {

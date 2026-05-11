@@ -299,6 +299,151 @@ const Map<String, String> _enUs = {
   'msvc_ready_to_train': 'MSVC is on PATH; you can start training.',
   'snackbar_python_installed_body':
       'Python installed — restart the app, then tap Install to add dependencies.',
+
+  // home_controller logs & errors
+  'err_rwkv_root_token':
+      'RootIsolateToken unavailable; cannot start RWKV runtime.',
+  'err_rwkv_start_timeout': 'RWKV runtime startup timed out.',
+  'err_rwkv_load_failed': 'Load failed',
+  'err_rwkv_not_ready': 'RWKV runtime not ready.',
+  'log_build_rwkvop_fixed': '[BUILD] Patched rwkvop.py: @changes\n',
+  'log_build_cache_cleared': '[BUILD] Cleared stale build cache: @path\n',
+  'log_cuda_detect_start': '▶ Detecting CUDA install path...\n',
+  'log_cuda_found_env': '✓ Detected from environment variable: @path\n',
+  'log_cuda_found_auto': '✓ Auto-detected: @path\n',
+  'log_cuda_found_nvcc': '✓ Detected from nvcc: @path\n',
+  'log_cuda_not_found':
+      '✗ CUDA not auto-detected. Pick the install folder manually or use one-click CUDA install.\n'
+      '  Typical path: C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.x or v13.x\n',
+  'log_cuda_manual_set': '✓ Set manually: @path\n',
+  'log_cuda_install_start':
+      '▶ Installing latest CUDA via winget...\n'
+      '  Package: Nvidia.CUDA (latest)\n'
+      '  UAC may prompt — choose Yes\n'
+      '  May take 5–15 minutes.\n\n',
+  'log_cuda_install_done':
+      '\n✓ CUDA installed. Tap Auto detect to refresh paths, or restart the app.',
+  'log_cuda_install_fail':
+      '\n✗ Install failed (exit: @code). Try downloading CUDA from NVIDIA manually.',
+  'log_line_exec_error': '\n✗ Error: @e',
+  'log_repo_ready': '✓ Repository ready: @path',
+  'log_repo_no_train_py':
+      '✗ train.py not found under this path — clone or extract the repository.',
+  'log_repo_extracting': 'Extracting bundled repository to @path ...\n',
+  'log_repo_ready_done': '\n✓ Repository ready!',
+  'log_repo_error': 'Error: @e',
+  'log_git_install_start':
+      '▶ Installing Git via winget...\n'
+      '  UAC may prompt — choose Yes\n\n',
+  'log_git_install_done':
+      '\n✓ Git installed. Retry detection or restart the app.',
+  'log_git_install_fail':
+      '\n✗ Install failed (exit: @code). Download from https://git-scm.com if needed.',
+  'log_train_vcvars_hint':
+      'Windows: vcvarsall.bat will initialize MSVC before training.\n',
+  'log_train_run_intro': '✓ Running train.py in the repository\n',
+  'log_train_cmd': 'Command: @cmd\n',
+  'log_train_note_num_steps_yes': 'Note: num_steps was passed to train.py.',
+  'log_train_note_num_steps_no':
+      'Note: this train.py has no num_steps; that UI field was ignored.',
+  'log_train_windows_launcher': '[BUILD] Windows launcher: @path\n',
+  'log_train_vcvars_missing':
+      '[BUILD] WARNING: vcvarsall.bat not found; starting train.py directly\n',
+  'log_train_success_footer':
+      '\n==================================================\n✓ Training finished successfully!\n',
+  'log_train_fail_exit': '\n✗ Training exited abnormally (exit: @code)\n',
+  'log_train_start_fail': 'Failed to start: @e\n',
+  'log_train_stopped_manual': '\n⏹ Training stopped by user\n',
+  'log_uv_install_start':
+      '▶ Installing UV via winget...\n'
+      '  Package: astral-sh.uv\n'
+      '  UAC may prompt — choose Yes\n\n',
+  'log_uv_install_done': '\n✓ UV installed — restart the app.',
+  'log_uv_install_fail': '\n✗ Install failed (exit: @code)',
+  'log_python_install_start':
+      '▶ Installing Python 3.12 via winget...\n'
+      '  UAC may prompt — choose Yes\n'
+      '  After install, restart this app so Python is detected\n\n',
+  'log_python_install_done':
+      '\n✓ Python 3.12 installed.\n  Close and reopen the app, then tap Install for dependencies.',
+  'log_python_install_fail':
+      '\n✗ Install failed (exit: @code). Download from https://www.python.org if needed.',
+  'log_install_check_uv': '▶ Checking UV (venv tool)...\n',
+  'log_install_uv_missing': '✗ UV not found — installing automatically...\n\n',
+  'log_install_restart_tap_install':
+      '\n→ Restart the app, then tap Install again.\n',
+  'log_install_uv_ok': '✓ UV is installed\n',
+  'log_install_deps_to': '  Dependencies target: @repo/python_venv\n\n',
+  'log_install_create_venv': '▶ Creating python_venv (Python 3.12)...\n',
+  'log_install_venv_fail': '✗ Failed to create venv\n',
+  'log_install_venv_created': '✓ Virtual environment created\n\n',
+  'log_install_venv_exists': '✓ Virtual environment already exists: python_venv\n\n',
+  'log_install_torch_cuda': '▶ Installing GPU (CUDA) torch for tag: @tag\n\n',
+  'log_install_pkg_line': '▶ Installing @pkg ...\n',
+  'log_install_torch_download': '  Downloading from PyTorch GPU index (~1–2 GB)...\n',
+  'log_install_torch_pip_fallback':
+      '\n  UV torch install failed; falling back to pip...\n',
+  'log_install_pkg_ok': '✓ @pkg installed\n\n',
+  'log_install_pkg_fail': '\n✗ @pkg failed (exit: @code)\n\n',
+  'log_install_all_done': '✓ All dependencies installed\n',
+  'log_install_failed_pkgs': '✗ The following packages failed — see log above:\n',
+  'log_install_exception': '\nError: @e',
+  'log_buildtools_ready_msg':
+      '✓ ninja is on PATH\n✓ MSVC cl.exe is on PATH\nBuild tools ready — nothing to install.\n',
+  'log_buildtools_install_ninja': '▶ Installing ninja...\n',
+  'log_buildtools_ninja_ok': '✓ ninja installed\n\n',
+  'log_buildtools_ninja_fail': '✗ ninja install failed\n\n',
+  'log_buildtools_ninja_msvc_done':
+      '✓ ninja and MSVC are ready — no further install needed.\n',
+  'log_buildtools_ninja_on_path':
+      '▶ ninja\n✓ Already on PATH (skipping pip install)\n\n',
+  'log_buildtools_msvc_found':
+      '✓ MSVC cl.exe detected — nothing to install\n  @path\n',
+  'log_buildtools_need_winget':
+      '✗ winget is required to install MSVC — see Settings (App Installer).\n',
+  'log_buildtools_non_windows':
+      '✗ Install a C++ toolchain (e.g. gcc/clang) compatible with CUDA.\n',
+  'log_buildtools_msvc_install_start':
+      '▶ Installing MSVC C++ via winget...\n'
+      '  Compiler-only payload ~1.5 GB (no IDE)\n'
+      '  UAC may prompt — choose Yes\n\n',
+  'log_buildtools_msvc_done':
+      '\n✓ MSVC build tools installed.\n  Restart the app before training again.\n',
+  'log_buildtools_winget_no_upgrade':
+      '\n✓ winget: Build Tools already installed; no upgrade (exit code OK).\n'
+      '  Rechecking cl.exe on PATH...\n',
+  'log_buildtools_cl_ok':
+      '✓ cl.exe found — CUDA extensions can compile\n  @path\n',
+  'log_buildtools_cl_missing':
+      '⚠ cl.exe still not on PATH.\n'
+      '  Open Visual Studio Installer → Modify Build Tools,\n'
+      '  enable “Desktop development with C++” or MSVC v143 + Windows SDK,\n'
+      '  then restart this app or verify with “where cl” in x64 Native Tools.\n'
+      '  Download: https://aka.ms/vs/17/release/vs_buildtools.exe\n',
+  'log_buildtools_winget_fail':
+      '\n✗ winget install failed (exit: @code)\n'
+      '  Download VS Build Tools (free, C++ only):\n'
+      '  https://aka.ms/vs/17/release/vs_buildtools.exe\n'
+      '  Select MSVC v143 and Windows SDK only.\n',
+  'log_buildtools_exception': 'Error: @e\n',
+  'log_env_checking': 'Checking environment...\n',
+  'log_env_no_python':
+      '✗ No usable Python found\n'
+      '  Tap Install to set up UV and create the project venv\n\n',
+  'log_env_using_venv': '✓ Using project venv (python_venv)\n',
+  'log_env_using_system': '✓ Using system Python\n',
+  'log_env_missing_line': '\nMissing: @list',
+  'log_env_pkg_installed': '✓ @pkg installed\n',
+  'log_env_pkg_missing': '✗ @pkg not installed\n',
+  'log_env_torch_cuda_check': '\n▶ Checking torch CUDA support...\n',
+  'log_env_torch_cuda_ok': '✓ torch GPU (CUDA) OK  [@detail]\n',
+  'log_env_torch_no_cuda':
+      '✗ torch has no CUDA GPU support\n'
+      '  Update the NVIDIA driver, or use a driver that supports CUDA 13.0\n',
+  'log_env_torch_detail': '  Detail: @detail\n',
+  'log_env_all_ready': '\nAll dependencies are ready.',
+  'log_env_missing_reinstall': '\nMissing or needs reinstall: @list',
+  'log_env_check_exception': 'Check error: @e',
 };
 
 const Map<String, String> _zhCn = {
@@ -572,6 +717,141 @@ const Map<String, String> _zhCn = {
   'msvc_ready_to_train': 'MSVC 已在 PATH 中，可直接训练',
   'snackbar_python_installed_body':
       'Python 已安装，请重启应用后点击「一键安装」继续',
+
+  'err_rwkv_root_token': 'RootIsolateToken 不可用，无法启动 RWKV runtime。',
+  'err_rwkv_start_timeout': 'RWKV runtime 启动超时。',
+  'err_rwkv_load_failed': '加载失败',
+  'err_rwkv_not_ready': 'RWKV runtime 未就绪。',
+  'log_build_rwkvop_fixed': '[BUILD] 已修复 rwkvop.py: @changes\n',
+  'log_build_cache_cleared': '[BUILD] 已清理旧编译缓存: @path\n',
+  'log_cuda_detect_start': '▶ 正在检测 CUDA 安装路径...\n',
+  'log_cuda_found_env': '✓ 从环境变量检测到: @path\n',
+  'log_cuda_found_auto': '✓ 自动检测到: @path\n',
+  'log_cuda_found_nvcc': '✓ 从 nvcc 命令检测到: @path\n',
+  'log_cuda_not_found':
+      '✗ 未自动检测到 CUDA，请手动选择安装目录或点击「一键安装 CUDA」\n'
+      '  常见路径: C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.x 或 v13.x\n',
+  'log_cuda_manual_set': '✓ 手动设置: @path\n',
+  'log_cuda_install_start':
+      '▶ 正在通过 winget 安装 CUDA 最新版...\n'
+      '  包: Nvidia.CUDA（自动选择最新版本）\n'
+      '  系统会弹出 UAC 权限提示，请点击「是」\n'
+      '  安装过程可能需 5–15 分钟，请耐心等待\n\n',
+  'log_cuda_install_done':
+      '\n✓ CUDA 安装完成！请点击「自动检测」刷新路径，或重启应用。',
+  'log_cuda_install_fail':
+      '\n✗ 安装失败 (exit: @code)，可尝试从 NVIDIA 官网手动下载安装。',
+  'log_line_exec_error': '\n✗ 执行出错: @e',
+  'log_repo_ready': '✓ 仓库已就绪: @path',
+  'log_repo_no_train_py': '✗ 路径下未找到 train.py，请克隆仓库',
+  'log_repo_extracting': '正在解压内置仓库到 @path ...\n',
+  'log_repo_ready_done': '\n✓ 仓库就绪！',
+  'log_repo_error': '异常: @e',
+  'log_git_install_start':
+      '▶ 正在通过 winget 安装 Git...\n'
+      '  系统会弹出 UAC 权限提示，请点击「是」\n\n',
+  'log_git_install_done': '\n✓ Git 安装完成！请点击「检测 Git」或重启应用。',
+  'log_git_install_fail':
+      '\n✗ 安装失败 (exit: @code)，可从 https://git-scm.com 手动下载安装。',
+  'log_train_vcvars_hint':
+      'Windows: 训练前将自动调用 vcvarsall.bat 初始化 MSVC 环境。\n',
+  'log_train_run_intro': '✓ 直接运行仓库 train.py\n',
+  'log_train_cmd': '命令: @cmd\n',
+  'log_train_note_num_steps_yes': '说明: 已传入 num_steps 参数。\n',
+  'log_train_note_num_steps_no':
+      '说明: 当前仓库 train.py 不支持 num_steps，已忽略该 UI 字段。\n',
+  'log_train_windows_launcher': '[BUILD] Windows 启动器: @path\n',
+  'log_train_vcvars_missing':
+      '[BUILD] WARNING: 未找到 vcvarsall.bat，改为直接启动 train.py\n',
+  'log_train_success_footer':
+      '\n==================================================\n✓ 训练成功完成！\n',
+  'log_train_fail_exit': '\n✗ 训练异常退出 (exit: @code)\n',
+  'log_train_start_fail': '启动失败: @e\n',
+  'log_train_stopped_manual': '\n⏹ 训练已手动停止\n',
+  'log_uv_install_start':
+      '▶ 正在通过 winget 安装 UV...\n'
+      '  包: astral-sh.uv\n'
+      '  系统会弹出 UAC 权限提示，请点击「是」\n\n',
+  'log_uv_install_done': '\n✓ UV 安装完成！请重启应用。',
+  'log_uv_install_fail': '\n✗ 安装失败 (exit: @code)',
+  'log_python_install_start':
+      '▶ 正在通过 winget 安装 Python 3.12...\n'
+      '  系统会弹出 UAC 权限提示，请点击「是」\n'
+      '  安装完成后请重启本应用，以便识别新安装的 Python\n\n',
+  'log_python_install_done':
+      '\n✓ Python 3.12 安装完成！\n  请关闭并重新打开本应用，然后点击「一键安装」安装依赖包。',
+  'log_python_install_fail':
+      '\n✗ 安装失败 (exit: @code)，可从 https://www.python.org 手动下载安装。',
+  'log_install_check_uv': '▶ 检测 UV（虚拟环境工具）...\n',
+  'log_install_uv_missing': '✗ 未找到 UV，正在自动安装...\n\n',
+  'log_install_restart_tap_install': '\n→ 请重启应用后再次点击「一键安装」。\n',
+  'log_install_uv_ok': '✓ UV 已安装\n',
+  'log_install_deps_to': '  依赖将安装到项目目录: @repo/python_venv\n\n',
+  'log_install_create_venv': '▶ 创建虚拟环境 python_venv（Python 3.12）...\n',
+  'log_install_venv_fail': '✗ 创建 venv 失败\n',
+  'log_install_venv_created': '✓ 虚拟环境已创建\n\n',
+  'log_install_venv_exists': '✓ 虚拟环境已存在: python_venv\n\n',
+  'log_install_torch_cuda': '▶ 将安装 GPU (CUDA) torch，根据当前 CUDA 配置: @tag\n\n',
+  'log_install_pkg_line': '▶ 安装 @pkg ...\n',
+  'log_install_torch_download': '  从 PyTorch GPU 源下载（约 1–2 GB）...\n',
+  'log_install_torch_pip_fallback': '\n  UV 安装 torch 失败，尝试使用 pip 回退...\n',
+  'log_install_pkg_ok': '✓ @pkg 安装成功\n\n',
+  'log_install_pkg_fail': '\n✗ @pkg 安装失败 (exit: @code)\n\n',
+  'log_install_all_done': '✓ 全部依赖安装完成！\n',
+  'log_install_failed_pkgs': '✗ 以下包安装失败，请查看上方日志：\n',
+  'log_install_exception': '\n异常: @e',
+  'log_buildtools_ready_msg':
+      '✓ ninja 已在 PATH 中\n✓ MSVC cl.exe 已在 PATH 中\n编译工具已就绪，无需重复安装。\n',
+  'log_buildtools_install_ninja': '▶ 安装 ninja 构建工具...\n',
+  'log_buildtools_ninja_ok': '✓ ninja 安装成功\n\n',
+  'log_buildtools_ninja_fail': '✗ ninja 安装失败\n\n',
+  'log_buildtools_ninja_msvc_done': '✓ ninja 与 MSVC 均已就绪，无需继续安装。\n',
+  'log_buildtools_ninja_on_path': '▶ ninja\n✓ 已在 PATH 中（跳过 pip 安装）\n\n',
+  'log_buildtools_msvc_found': '✓ 已检测到 MSVC cl.exe，无需重复安装\n  @path\n',
+  'log_buildtools_need_winget':
+      '✗ 安装 MSVC 需先安装 winget，详见设置页顶部「应用安装程序」\n',
+  'log_buildtools_non_windows':
+      '✗ 非 Windows 系统请自行安装 C++ 编译器（如 gcc/clang）并确保与 CUDA 配套。\n',
+  'log_buildtools_msvc_install_start':
+      '▶ 正在通过 winget 安装 MSVC C++ 编译器...\n'
+      '  仅安装编译器组件，约 1.5 GB（无 IDE）\n'
+      '  系统将弹出 UAC 权限提示，请点击「是」\n\n',
+  'log_buildtools_msvc_done':
+      '\n✓ MSVC 编译工具安装完成！\n  请重启应用后重新运行训练\n',
+  'log_buildtools_winget_no_upgrade':
+      '\n✓ winget：本机已安装 Visual Studio Build Tools，且无可用升级（退出码属正常）\n'
+      '  正在复查 cl.exe 是否在 PATH 中...\n',
+  'log_buildtools_cl_ok': '✓ 已检测到 cl.exe，可直接编译 CUDA 扩展\n  @path\n',
+  'log_buildtools_cl_missing':
+      '⚠ 仍未在 PATH 中找到 cl.exe。\n'
+      '  请打开「Visual Studio Installer」→ 修改 Build Tools，\n'
+      '  确保勾选「使用 C++ 的桌面开发」或 MSVC v143 + Windows SDK，\n'
+      '  安装完成后重启本应用或从「x64 Native Tools Command Prompt」验证 where cl。\n'
+      '  手动下载： https://aka.ms/vs/17/release/vs_buildtools.exe\n',
+  'log_buildtools_winget_fail':
+      '\n✗ winget 安装失败 (exit: @code)\n'
+      '  请手动下载 VS Build Tools（免费，仅选 C++ 编译器）：\n'
+      '  https://aka.ms/vs/17/release/vs_buildtools.exe\n'
+      '  安装时只勾选 "MSVC v143" 和 "Windows SDK" 两项即可\n',
+  'log_buildtools_exception': '异常: @e\n',
+  'log_env_checking': '正在检测环境...\n',
+  'log_env_no_python':
+      '✗ 未找到可用 Python\n'
+      '  请点击「一键安装」安装 UV 并创建项目虚拟环境\n\n',
+  'log_env_using_venv': '✓ 使用: 项目 venv (python_venv)\n',
+  'log_env_using_system': '✓ 使用: 系统 Python\n',
+  'log_env_missing_line': '\n缺少: @list',
+  'log_env_pkg_installed': '✓ @pkg 已安装\n',
+  'log_env_pkg_missing': '✗ @pkg 未安装\n',
+  'log_env_torch_cuda_check': '\n▶ 检测 torch CUDA 支持...\n',
+  'log_env_torch_cuda_ok': '✓ torch GPU (CUDA) 版本正常  [@detail]\n',
+  'log_env_torch_no_cuda':
+      '✗ torch 未检测到 CUDA GPU 支持\n'
+      '  请更新 NVIDIA 显卡驱动至最新版本，或使用支持 CUDA 13.0 的驱动\n',
+  'log_env_torch_detail': '  详情: @detail\n',
+  'log_env_all_ready': '\n所有环境已经准备好',
+  'log_env_missing_reinstall': '\n缺少或需重装: @list',
+  'log_env_check_exception': '检测异常: @e',
 };
 
 const Map<String, String> _zhTw = {
@@ -845,4 +1125,139 @@ const Map<String, String> _zhTw = {
   'msvc_ready_to_train': 'MSVC 已在 PATH 中，可直接訓練',
   'snackbar_python_installed_body':
       'Python 已安裝，請重新啟動應用程式後點「一鍵安裝」繼續',
+
+  'err_rwkv_root_token': 'RootIsolateToken 不可用，無法啟動 RWKV runtime。',
+  'err_rwkv_start_timeout': 'RWKV runtime 啟動逾時。',
+  'err_rwkv_load_failed': '載入失敗',
+  'err_rwkv_not_ready': 'RWKV runtime 尚未就緒。',
+  'log_build_rwkvop_fixed': '[BUILD] 已修復 rwkvop.py: @changes\n',
+  'log_build_cache_cleared': '[BUILD] 已清除舊編譯快取: @path\n',
+  'log_cuda_detect_start': '▶ 正在偵測 CUDA 安裝路徑...\n',
+  'log_cuda_found_env': '✓ 從環境變數偵測到: @path\n',
+  'log_cuda_found_auto': '✓ 自動偵測到: @path\n',
+  'log_cuda_found_nvcc': '✓ 從 nvcc 偵測到: @path\n',
+  'log_cuda_not_found':
+      '✗ 未自動偵測到 CUDA，請手動選擇安裝目錄或點「一鍵安裝 CUDA」\n'
+      '  常見路徑: C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.x 或 v13.x\n',
+  'log_cuda_manual_set': '✓ 手動設定: @path\n',
+  'log_cuda_install_start':
+      '▶ 正在透過 winget 安裝 CUDA 最新版...\n'
+      '  套件: Nvidia.CUDA（自動選擇最新版本）\n'
+      '  系統會跳出 UAC，請點「是」\n'
+      '  安裝約需 5–15 分鐘，請稍候\n\n',
+  'log_cuda_install_done':
+      '\n✓ CUDA 安裝完成！請點「自動偵測」重新整理路徑，或重新啟動應用程式。',
+  'log_cuda_install_fail':
+      '\n✗ 安裝失敗 (exit: @code)，可改從 NVIDIA 官網手動下載安裝。',
+  'log_line_exec_error': '\n✗ 執行錯誤: @e',
+  'log_repo_ready': '✓ 存放庫已就緒: @path',
+  'log_repo_no_train_py': '✗ 路徑下找不到 train.py，請複製或解壓存放庫',
+  'log_repo_extracting': '正在解壓內建存放庫到 @path ...\n',
+  'log_repo_ready_done': '\n✓ 存放庫就緒！',
+  'log_repo_error': '例外: @e',
+  'log_git_install_start':
+      '▶ 正在透過 winget 安裝 Git...\n'
+      '  系統會跳出 UAC，請點「是」\n\n',
+  'log_git_install_done': '\n✓ Git 安裝完成！請重新偵測或重新啟動應用程式。',
+  'log_git_install_fail':
+      '\n✗ 安裝失敗 (exit: @code)，可改從 https://git-scm.com 手動下載。',
+  'log_train_vcvars_hint':
+      'Windows：訓練前將自動呼叫 vcvarsall.bat 初始化 MSVC。\n',
+  'log_train_run_intro': '✓ 直接在存放庫執行 train.py\n',
+  'log_train_cmd': '命令: @cmd\n',
+  'log_train_note_num_steps_yes': '說明: 已傳入 num_steps 參數。\n',
+  'log_train_note_num_steps_no':
+      '說明: 此 train.py 不支援 num_steps，已忽略該 UI 欄位。\n',
+  'log_train_windows_launcher': '[BUILD] Windows 啟動器: @path\n',
+  'log_train_vcvars_missing':
+      '[BUILD] WARNING: 找不到 vcvarsall.bat，改為直接啟動 train.py\n',
+  'log_train_success_footer':
+      '\n==================================================\n✓ 訓練成功完成！\n',
+  'log_train_fail_exit': '\n✗ 訓練異常結束 (exit: @code)\n',
+  'log_train_start_fail': '啟動失敗: @e\n',
+  'log_train_stopped_manual': '\n⏹ 訓練已手動停止\n',
+  'log_uv_install_start':
+      '▶ 正在透過 winget 安裝 UV...\n'
+      '  套件: astral-sh.uv\n'
+      '  系統會跳出 UAC，請點「是」\n\n',
+  'log_uv_install_done': '\n✓ UV 安裝完成！請重新啟動應用程式。',
+  'log_uv_install_fail': '\n✗ 安裝失敗 (exit: @code)',
+  'log_python_install_start':
+      '▶ 正在透過 winget 安裝 Python 3.12...\n'
+      '  系統會跳出 UAC，請點「是」\n'
+      '  安裝完成後請重新啟動本應用程式以便偵測 Python\n\n',
+  'log_python_install_done':
+      '\n✓ Python 3.12 安裝完成！\n  請關閉並重新開啟本應用程式，再點「一鍵安裝」安裝依賴。',
+  'log_python_install_fail':
+      '\n✗ 安裝失敗 (exit: @code)，可改從 https://www.python.org 手動下載。',
+  'log_install_check_uv': '▶ 偵測 UV（虛擬環境工具）...\n',
+  'log_install_uv_missing': '✗ 找不到 UV，正在自動安裝...\n\n',
+  'log_install_restart_tap_install': '\n→ 請重新啟動應用程式後再點「一鍵安裝」。\n',
+  'log_install_uv_ok': '✓ UV 已安裝\n',
+  'log_install_deps_to': '  依賴將安裝至專案目錄: @repo/python_venv\n\n',
+  'log_install_create_venv': '▶ 建立虛擬環境 python_venv（Python 3.12）...\n',
+  'log_install_venv_fail': '✗ 建立 venv 失敗\n',
+  'log_install_venv_created': '✓ 虛擬環境已建立\n\n',
+  'log_install_venv_exists': '✓ 虛擬環境已存在: python_venv\n\n',
+  'log_install_torch_cuda': '▶ 將安裝 GPU (CUDA) torch，依目前 CUDA 設定: @tag\n\n',
+  'log_install_pkg_line': '▶ 安裝 @pkg ...\n',
+  'log_install_torch_download': '  從 PyTorch GPU 來源下載（約 1–2 GB）...\n',
+  'log_install_torch_pip_fallback': '\n  UV 安裝 torch 失敗，改以 pip 重試...\n',
+  'log_install_pkg_ok': '✓ @pkg 安裝成功\n\n',
+  'log_install_pkg_fail': '\n✗ @pkg 安裝失敗 (exit: @code)\n\n',
+  'log_install_all_done': '✓ 全部依賴安裝完成！\n',
+  'log_install_failed_pkgs': '✗ 以下套件安裝失敗，請查看上方日誌：\n',
+  'log_install_exception': '\n例外: @e',
+  'log_buildtools_ready_msg':
+      '✓ ninja 已在 PATH\n✓ MSVC cl.exe 已在 PATH\n編譯工具已就緒，無需重複安裝。\n',
+  'log_buildtools_install_ninja': '▶ 安裝 ninja 建置工具...\n',
+  'log_buildtools_ninja_ok': '✓ ninja 安裝成功\n\n',
+  'log_buildtools_ninja_fail': '✗ ninja 安裝失敗\n\n',
+  'log_buildtools_ninja_msvc_done': '✓ ninja 與 MSVC 均已就緒，無需繼續安裝。\n',
+  'log_buildtools_ninja_on_path': '▶ ninja\n✓ 已在 PATH（略過 pip 安裝）\n\n',
+  'log_buildtools_msvc_found': '✓ 已偵測到 MSVC cl.exe，無需重複安裝\n  @path\n',
+  'log_buildtools_need_winget':
+      '✗ 安裝 MSVC 需先有 winget，詳見設定頁頂部「應用程式安裝程式」\n',
+  'log_buildtools_non_windows':
+      '✗ 非 Windows 請自行安裝 C++ 編譯器（如 gcc/clang）並與 CUDA 搭配。\n',
+  'log_buildtools_msvc_install_start':
+      '▶ 正在透過 winget 安裝 MSVC C++ 編譯器...\n'
+      '  僅編譯器元件，約 1.5 GB（無 IDE）\n'
+      '  系統會跳出 UAC，請點「是」\n\n',
+  'log_buildtools_msvc_done':
+      '\n✓ MSVC 編譯工具安裝完成！\n  請重新啟動應用程式後再訓練\n',
+  'log_buildtools_winget_no_upgrade':
+      '\n✓ winget：本機已安裝 Visual Studio Build Tools，且無可用升級（結束碼屬正常）\n'
+      '  正在複查 cl.exe 是否在 PATH...\n',
+  'log_buildtools_cl_ok': '✓ 已偵測到 cl.exe，可編譯 CUDA 擴充\n  @path\n',
+  'log_buildtools_cl_missing':
+      '⚠ 仍找不到 PATH 中的 cl.exe。\n'
+      '  請開啟「Visual Studio Installer」→ 修改 Build Tools，\n'
+      '  勾選「使用 C++ 的桌面開發」或 MSVC v143 + Windows SDK，\n'
+      '  完成後重新啟動本應用程式，或在「x64 Native Tools」驗證 where cl。\n'
+      '  手動下載： https://aka.ms/vs/17/release/vs_buildtools.exe\n',
+  'log_buildtools_winget_fail':
+      '\n✗ winget 安裝失敗 (exit: @code)\n'
+      '  請手動下載 VS Build Tools（免費，僅選 C++ 編譯器）：\n'
+      '  https://aka.ms/vs/17/release/vs_buildtools.exe\n'
+      '  安裝時僅勾選 "MSVC v143" 與 "Windows SDK"\n',
+  'log_buildtools_exception': '例外: @e\n',
+  'log_env_checking': '正在偵測環境...\n',
+  'log_env_no_python':
+      '✗ 找不到可用 Python\n'
+      '  請點「一鍵安裝」安裝 UV 並建立專案虛擬環境\n\n',
+  'log_env_using_venv': '✓ 使用: 專案 venv (python_venv)\n',
+  'log_env_using_system': '✓ 使用: 系統 Python\n',
+  'log_env_missing_line': '\n缺少: @list',
+  'log_env_pkg_installed': '✓ @pkg 已安裝\n',
+  'log_env_pkg_missing': '✗ @pkg 未安裝\n',
+  'log_env_torch_cuda_check': '\n▶ 偵測 torch CUDA 支援...\n',
+  'log_env_torch_cuda_ok': '✓ torch GPU (CUDA) 正常  [@detail]\n',
+  'log_env_torch_no_cuda':
+      '✗ torch 未偵測到 CUDA GPU 支援\n'
+      '  請更新 NVIDIA 顯示卡驅動至最新，或使用支援 CUDA 13.0 的驅動\n',
+  'log_env_torch_detail': '  詳情: @detail\n',
+  'log_env_all_ready': '\n所有環境已準備好',
+  'log_env_missing_reinstall': '\n缺少或需重新安裝: @list',
+  'log_env_check_exception': '偵測例外: @e',
 };
