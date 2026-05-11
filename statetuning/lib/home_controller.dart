@@ -32,8 +32,8 @@ class HomeController extends GetxController {
   final currentTabIndex = 0.obs;
 
   // --- GPU / Status ---
-  final gpuInfo = '检测中...'.obs;
-  final status = '空闲'.obs;
+  final gpuInfo = ''.obs;
+  final status = ''.obs;
 
   // --- RWKV7 Model Presets ---
   static const presets = [
@@ -145,7 +145,7 @@ class HomeController extends GetxController {
   final isRwkvLoading = false.obs;
   final rwkvLoadProgress = 0.0.obs;
   final isRwkvGenerating = false.obs;
-  final rwkvStatus = '未初始化'.obs;
+  final rwkvStatus = ''.obs;
   final rwkvTestLog = ''.obs;
   final rwkvMessages = <Map<String, String>>[].obs; // {role, text}
   late final TextEditingController testPromptController;
@@ -202,6 +202,9 @@ class HomeController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    gpuInfo.value = 'gpu_detecting'.tr;
+    status.value = 'status_idle'.tr;
+    rwkvStatus.value = 'rwkv_status_uninit'.tr;
     vocabSizeController = TextEditingController(
       text: vocabSize.value.toString(),
     );
@@ -387,30 +390,30 @@ class HomeController extends GetxController {
       final path = repoPath.value.isEmpty ? '' : _trainLossJsonlPath();
 
       if (path.isEmpty) {
-        Get.snackbar('提示', '未找到 train_loss.jsonl 文件');
+        Get.snackbar('tip'.tr, 'snackbar_export_missing'.tr);
         return;
       }
 
       final file = File(path);
       if (!await file.exists()) {
-        Get.snackbar('提示', '未找到 train_loss.jsonl 文件（请先运行训练）');
+        Get.snackbar('tip'.tr, 'snackbar_export_missing_run'.tr);
         return;
       }
 
       final dir = await FilePicker.platform.getDirectoryPath(
-        dialogTitle: '选择导出目录',
+        dialogTitle: 'dialog_pick_export_dir'.tr,
       );
       if (dir == null || dir.isEmpty) return;
 
       final destPath = '$dir${Platform.pathSeparator}$_trainLossFileName';
       await file.copy(destPath);
       Get.snackbar(
-        '导出完成',
-        'train_loss.jsonl 已导出到: $destPath',
+        'export_done'.tr,
+        'snackbar_export_copied'.trParams({'path': destPath}),
         duration: const Duration(seconds: 4),
       );
     } catch (e) {
-      Get.snackbar('导出失败', '$e');
+      Get.snackbar('export_failed'.tr, '$e');
     }
   }
 
@@ -452,7 +455,7 @@ class HomeController extends GetxController {
 
   Future<void> pickTestModelFile() async {
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: '选择 RWKV 模型文件 (.pth)',
+      dialogTitle: 'snackbar_dialog_pick_pth'.tr,
       type: FileType.custom,
       allowedExtensions: const ['pth'],
     );
@@ -479,7 +482,7 @@ class HomeController extends GetxController {
 
   Future<void> pickTestTokenizerFile() async {
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: '选择 tokenizer 文件',
+      dialogTitle: 'snackbar_dialog_pick_tokenizer'.tr,
       type: FileType.custom,
       allowedExtensions: const ['txt', 'json', 'model'],
     );
@@ -489,14 +492,14 @@ class HomeController extends GetxController {
 
   Future<void> pickTestStateFile() async {
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: '选择 state 文件',
+      dialogTitle: 'snackbar_dialog_pick_state'.tr,
       type: FileType.custom,
       allowedExtensions: const ['state'],
     );
     final path = result?.files.single.path;
     if (path != null) {
       testStatePathController.text = path;
-      // Get.snackbar('提示', '当前测试仅支持 .pth，state 文件暂未接入');
+      // Get.snackbar('tip'.tr, '当前测试仅支持 .pth，state 文件暂未接入');
     }
   }
 
@@ -531,8 +534,8 @@ class HomeController extends GetxController {
       await Future<void>.delayed(const Duration(milliseconds: 80));
     }
     isRwkvRuntimeReady.value = true;
-    rwkvStatus.value = 'runtime 已就绪';
-    _appendRwkvLog('RWKV runtime 已启动');
+    rwkvStatus.value = 'rwkv_status_runtime_ready'.tr;
+    _appendRwkvLog('rwkv_log_runtime_started'.tr);
   }
 
   void _handleRwkvMessage(dynamic message) {
@@ -547,14 +550,19 @@ class HomeController extends GetxController {
         isRwkvLoading.value = true;
         final progress = (message.progress ?? 0).toDouble();
         rwkvLoadProgress.value = progress.clamp(0, 1);
-        rwkvStatus.value =
-            '模型加载中 ${(rwkvLoadProgress.value * 100).toStringAsFixed(1)}%';
+        rwkvStatus.value = 'rwkv_status_loading_pct'.trParams({
+          'p': (rwkvLoadProgress.value * 100).toStringAsFixed(1),
+        });
       } else if (message.status == LoadingStatus.loaded) {
         isRwkvLoading.value = false;
         rwkvLoadProgress.value = 1.0;
         _rwkvModelId = message.modelID;
-        rwkvStatus.value = '模型已加载 (ID: $_rwkvModelId)';
-        _appendRwkvLog('模型加载完成，modelID=$_rwkvModelId');
+        rwkvStatus.value = 'rwkv_status_loaded'.trParams({
+          'id': '$_rwkvModelId',
+        });
+        _appendRwkvLog(
+          'rwkv_log_load_done'.trParams({'id': '$_rwkvModelId'}),
+        );
         _rwkvLoadCompleter?.complete();
         _rwkvSendPort?.send(
           LoadInitialStates(testStatePath.value, modelID: _rwkvModelId!),
@@ -562,7 +570,7 @@ class HomeController extends GetxController {
         debugPrint('LoadInitialStates: ${testStatePath.value}');
       } else if (message.status == LoadingStatus.failedInLoading) {
         isRwkvLoading.value = false;
-        rwkvStatus.value = '模型加载失败';
+        rwkvStatus.value = 'rwkv_status_load_failed'.tr;
         _rwkvLoadCompleter?.completeError(Exception(message.info ?? '加载失败'));
       }
       return;
@@ -597,7 +605,7 @@ class HomeController extends GetxController {
 
     if (message is Error) {
       final msg = message.message;
-      _appendRwkvLog('错误: $msg');
+      _appendRwkvLog('${'rwkv_log_error_prefix'.tr}$msg');
       if (_rwkvLoadCompleter != null && !_rwkvLoadCompleter!.isCompleted) {
         _rwkvLoadCompleter!.completeError(Exception(msg));
       }
@@ -611,11 +619,11 @@ class HomeController extends GetxController {
 
   Future<void> loadRwkvTestModel() async {
     if (testModelPath.value.isEmpty) {
-      Get.snackbar('提示', '请先选择 .pth 模型文件');
+      Get.snackbar('tip'.tr, 'snackbar_pick_model_first'.tr);
       return;
     }
     if (testTokenizerPath.value.isEmpty) {
-      Get.snackbar('提示', '请先选择 tokenizer 文件');
+      Get.snackbar('tip'.tr, 'snackbar_pick_tokenizer_first'.tr);
       return;
     }
 
@@ -631,7 +639,7 @@ class HomeController extends GetxController {
 
       isRwkvLoading.value = true;
       rwkvLoadProgress.value = 0;
-      rwkvStatus.value = '开始加载模型...';
+      rwkvStatus.value = 'rwkv_start_load'.tr;
       _rwkvLoadCompleter = Completer<void>();
 
       send.send(
@@ -643,11 +651,11 @@ class HomeController extends GetxController {
       );
 
       await _rwkvLoadCompleter!.future.timeout(const Duration(minutes: 3));
-      Get.snackbar('成功', '模型加载完成');
+      Get.snackbar('success'.tr, 'snackbar_load_ok'.tr);
     } catch (e) {
       isRwkvLoading.value = false;
-      rwkvStatus.value = '模型加载失败';
-      Get.snackbar('加载失败', '$e');
+      rwkvStatus.value = 'rwkv_status_load_failed'.tr;
+      Get.snackbar('snackbar_load_failed'.tr, '$e');
     }
   }
 
@@ -661,7 +669,7 @@ class HomeController extends GetxController {
     if (prompt.isEmpty) return;
     final send = _rwkvSendPort;
     if (send == null || _rwkvModelId == null) {
-      Get.snackbar('提示', '请先加载模型');
+      Get.snackbar('tip'.tr, 'snackbar_load_model_first'.tr);
       return;
     }
     if (isRwkvGenerating.value) return;
@@ -688,10 +696,10 @@ class HomeController extends GetxController {
 
     try {
       await _rwkvGenerateCompleter!.future.timeout(const Duration(minutes: 2));
-      _appendRwkvLog('完成一轮回复');
+      _appendRwkvLog('rwkv_log_round_done'.tr);
     } catch (e) {
-      _appendRwkvLog('生成失败: $e');
-      Get.snackbar('生成失败', '$e');
+      _appendRwkvLog('rwkv_log_gen_failed'.trParams({'e': '$e'}));
+      Get.snackbar('snackbar_gen_failed'.tr, '$e');
     } finally {
       isRwkvGenerating.value = false;
       _rwkvPollTimer?.cancel();
@@ -948,12 +956,12 @@ class HomeController extends GetxController {
       );
       if (result.exitCode == 0) {
         final out = (result.stdout as String).trim();
-        gpuInfo.value = out.isNotEmpty ? out : 'No GPU';
+        gpuInfo.value = out.isNotEmpty ? out : 'gpu_none'.tr;
       } else {
-        gpuInfo.value = '未检测到 GPU';
+        gpuInfo.value = 'gpu_not_found'.tr;
       }
     } catch (_) {
-      gpuInfo.value = '未检测到 GPU';
+      gpuInfo.value = 'gpu_not_found'.tr;
     }
   }
 
@@ -1086,7 +1094,7 @@ class HomeController extends GetxController {
 
   Future<void> pickCudaHomeDir() async {
     final path = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: '选择 CUDA 安装目录（包含 bin/nvcc.exe 的上级目录）',
+      dialogTitle: 'snackbar_pick_cuda_dir'.tr,
     );
     if (path != null) {
       _setCudaHome(path);
@@ -1098,13 +1106,13 @@ class HomeController extends GetxController {
   Future<void> installCuda() async {
     if (isCudaInstalling.value) return;
     if (Platform.operatingSystem != 'windows') {
-      Get.snackbar('提示', '一键安装 CUDA 仅支持 Windows');
+      Get.snackbar('tip'.tr, 'snackbar_windows_only_cuda'.tr);
       return;
     }
     if (!wingetInstalled.value) {
       Get.snackbar(
-        '需先安装 winget',
-        '请先安装「应用安装程序」以使用一键安装，详见设置页顶部',
+        'need_winget_for_install_title'.tr,
+        'need_winget_for_install_body'.tr,
         snackPosition: SnackPosition.TOP,
         duration: const Duration(seconds: 5),
       );
@@ -1143,15 +1151,15 @@ class HomeController extends GetxController {
       if (result.exitCode == 0) {
         await detectCudaHome();
         Get.snackbar(
-          '安装完成',
-          'CUDA 已安装，请重启应用后开始训练',
+          'snackbar_install_done_short'.tr,
+          'snackbar_cuda_installed'.tr,
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 5),
         );
       }
     } catch (e) {
       cudaInstallLog.value += '\n✗ 执行出错: $e';
-      Get.snackbar('安装失败', '$e');
+      Get.snackbar('snackbar_install_failed'.tr, '$e');
     } finally {
       isCudaInstalling.value = false;
     }
@@ -1161,7 +1169,7 @@ class HomeController extends GetxController {
 
   Future<void> pickRepoDir() async {
     final path = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: '选择 statetuning 仓库目录',
+      dialogTitle: 'dialog_pick_repo'.tr,
     );
     if (path != null) {
       repoPath.value = path;
@@ -1172,7 +1180,7 @@ class HomeController extends GetxController {
 
   Future<void> pickModelFile() async {
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: '选择 RWKV7 模型文件 (.pth)',
+      dialogTitle: 'dialog_pick_model_pth'.tr,
       type: FileType.custom,
       allowedExtensions: ['pth'],
     );
@@ -1222,10 +1230,10 @@ class HomeController extends GetxController {
       );
       if (result.exitCode != 0) {
         Get.snackbar(
-          '模型尺寸检测失败',
+          'snackbar_model_shape_fail'.tr,
           (result.stderr as String).trim().isNotEmpty
               ? (result.stderr as String).trim()
-              : '无法读取模型文件',
+              : 'snackbar_model_cannot_read'.tr,
           snackPosition: SnackPosition.TOP,
           backgroundColor: Colors.red.shade800,
           colorText: Colors.white,
@@ -1253,15 +1261,19 @@ class HomeController extends GetxController {
       if (detectedEmbd > 0 || detectedVocab > 0 || detectedLayers > 0) {
         selectedPreset.value = '自定义';
         Get.snackbar(
-          '模型尺寸已自动检测',
-          'n_embd=$detectedEmbd  n_layer=$detectedLayers  vocab=$detectedVocab',
+          'snackbar_model_shape_ok'.tr,
+          'snackbar_model_shape_ok_detail'.trParams({
+            'e': '$detectedEmbd',
+            'l': '$detectedLayers',
+            'v': '$detectedVocab',
+          }),
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 4),
         );
       }
     } catch (e) {
       Get.snackbar(
-        '模型尺寸检测出错',
+        'snackbar_model_shape_error'.tr,
         e.toString(),
         snackPosition: SnackPosition.TOP,
         backgroundColor: Colors.red.shade800,
@@ -1275,7 +1287,7 @@ class HomeController extends GetxController {
 
   Future<void> pickDataFile() async {
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: '选择训练数据文件 (.jsonl)',
+      dialogTitle: 'dialog_pick_train_jsonl'.tr,
       type: FileType.custom,
       allowedExtensions: ['jsonl', 'json'],
     );
@@ -1288,7 +1300,7 @@ class HomeController extends GetxController {
 
   Future<void> pickOutputDir() async {
     final path = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: '选择输出目录',
+      dialogTitle: 'dialog_pick_output_dir'.tr,
     );
     if (path != null) {
       outputDir.value = path;
@@ -1300,7 +1312,7 @@ class HomeController extends GetxController {
 
   Future<void> checkRepo() async {
     if (repoPath.value.isEmpty) {
-      Get.snackbar('提示', '请先输入仓库路径');
+      Get.snackbar('tip'.tr, 'snackbar_pick_repo_first'.tr);
       return;
     }
     final trainFile = File(
@@ -1336,13 +1348,13 @@ class HomeController extends GetxController {
   Future<void> installGit() async {
     if (isGitInstalling.value) return;
     if (Platform.operatingSystem != 'windows') {
-      Get.snackbar('提示', '一键安装 Git 仅支持 Windows');
+      Get.snackbar('tip'.tr, 'snackbar_windows_only_git'.tr);
       return;
     }
     if (!wingetInstalled.value) {
       Get.snackbar(
-        '需先安装 winget',
-        '请先安装「应用安装程序」以使用一键安装，详见设置页顶部',
+        'need_winget_for_install_title'.tr,
+        'need_winget_for_install_body'.tr,
         snackPosition: SnackPosition.TOP,
         duration: const Duration(seconds: 5),
       );
@@ -1379,15 +1391,15 @@ class HomeController extends GetxController {
       if (result.exitCode == 0) {
         await detectGit();
         Get.snackbar(
-          '安装完成',
-          'Git 已安装，可以进行克隆操作',
+          'snackbar_install_done_short'.tr,
+          'snackbar_git_installed'.tr,
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 4),
         );
       }
     } catch (e) {
       gitInstallLog.value += '\n✗ 执行出错: $e';
-      Get.snackbar('安装失败', '$e');
+      Get.snackbar('snackbar_install_failed'.tr, '$e');
     } finally {
       isGitInstalling.value = false;
     }
@@ -1472,12 +1484,15 @@ class HomeController extends GetxController {
   /// 手动解压到当前选择的路径（数据 tab 可选）
   Future<void> initRepoFromBundle() async {
     if (repoPath.value.isEmpty) {
-      Get.snackbar('提示', '请先选择或输入目标路径');
+      Get.snackbar('tip'.tr, 'snackbar_pick_target_path'.tr);
       return;
     }
     await _extractZipToPath(repoPath.value);
     if (repoCloned.value) {
-      Get.snackbar('初始化成功', '仓库已解压到 ${repoPath.value}');
+      Get.snackbar(
+        'snackbar_init_ok'.tr,
+        'snackbar_init_ok_body'.trParams({'path': repoPath.value}),
+      );
     }
   }
 
@@ -1791,25 +1806,25 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   Future<void> startTraining() async {
     if (isTraining.value) return;
     if (repoPath.value.isEmpty) {
-      Get.snackbar('错误', '请先在「数据」标签页设置仓库路径');
+      Get.snackbar('error'.tr, 'snackbar_train_set_repo'.tr);
       return;
     }
     if (modelPath.value.isEmpty) {
-      Get.snackbar('错误', '请设置模型文件路径 (.pth)');
+      Get.snackbar('error'.tr, 'snackbar_train_set_model'.tr);
       return;
     }
     if (dataPath.value.isEmpty) {
-      Get.snackbar('错误', '请设置训练数据路径 (.jsonl)');
+      Get.snackbar('error'.tr, 'snackbar_train_set_data'.tr);
       return;
     }
     final trainPyPath = '${repoPath.value}${Platform.pathSeparator}train.py';
     if (!File(trainPyPath).existsSync()) {
-      Get.snackbar('错误', '仓库目录下未找到 train.py');
+      Get.snackbar('error'.tr, 'snackbar_train_no_train_py'.tr);
       return;
     }
 
     isTraining.value = true;
-    status.value = '训练中';
+    status.value = 'status_training'.tr;
     trainingLog.value = '';
     _logLines.clear();
     _logCurrentLine = '';
@@ -1952,13 +1967,20 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         trainingLog.value = _buildLogDisplay();
 
         isTraining.value = false;
-        status.value = code == 0 ? '训练完成' : '训练异常';
+        status.value =
+            code == 0 ? 'status_done'.tr : 'status_failed'.tr;
         if (code == 0) {
           await _loadLossHistoryFromTrainLossJsonl();
-          Get.snackbar('训练完成', '模型已保存到 ${outputDir.value}');
+          Get.snackbar(
+            'snackbar_train_done'.tr,
+            'snackbar_train_done_body'.trParams({'path': outputDir.value}),
+          );
           refreshOutputFiles();
         } else {
-          Get.snackbar('训练失败', '请查看监控日志');
+          Get.snackbar(
+            'snackbar_train_failed'.tr,
+            'snackbar_train_failed_hint'.tr,
+          );
         }
       });
     } catch (e) {
@@ -1967,8 +1989,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       _appendLogData('启动失败: $e\n');
       trainingLog.value = _buildLogDisplay();
       isTraining.value = false;
-      status.value = '空闲';
-      Get.snackbar('启动失败', '$e');
+      status.value = 'status_idle'.tr;
+      Get.snackbar('snackbar_start_failed'.tr, '$e');
     }
   }
 
@@ -2058,7 +2080,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
     _appendLogData('\n⏹ 训练已手动停止\n');
     trainingLog.value = _buildLogDisplay();
     isTraining.value = false;
-    status.value = '已停止';
+    status.value = 'status_stopped'.tr;
   }
 
   Future<void> refreshOutputFiles() async {
@@ -2109,11 +2131,14 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   Future<bool> installUv() async {
     if (isUvInstalling.value) return false;
     if (Platform.operatingSystem != 'windows') {
-      Get.snackbar('提示', '一键安装 UV 仅支持 Windows');
+      Get.snackbar('tip'.tr, 'snackbar_windows_only_uv'.tr);
       return false;
     }
     if (!wingetInstalled.value) {
-      Get.snackbar('需先安装 winget', '详见设置页顶部');
+      Get.snackbar(
+        'need_winget_for_install_title'.tr,
+        'need_winget_for_install_body'.tr,
+      );
       return false;
     }
     isUvInstalling.value = true;
@@ -2148,8 +2173,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       if (result.exitCode == 0) {
         await detectUv();
         Get.snackbar(
-          '安装完成',
-          'UV 已安装，请重启应用',
+          'snackbar_install_done_short'.tr,
+          'snackbar_uv_installed_restart'.tr,
           duration: const Duration(seconds: 5),
         );
         return true;
@@ -2157,7 +2182,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       return false;
     } catch (e) {
       uvInstallLog.value += '\n✗ 执行出错: $e';
-      Get.snackbar('安装失败', '$e');
+      Get.snackbar('snackbar_install_failed'.tr, '$e');
       return false;
     } finally {
       isUvInstalling.value = false;
@@ -2198,13 +2223,13 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   Future<bool> installPython() async {
     if (isPythonInstalling.value) return false;
     if (Platform.operatingSystem != 'windows') {
-      Get.snackbar('提示', '一键安装 Python 仅支持 Windows');
+      Get.snackbar('tip'.tr, 'snackbar_windows_only_python'.tr);
       return false;
     }
     if (!wingetInstalled.value) {
       Get.snackbar(
-        '需先安装 winget',
-        '请先安装「应用安装程序」以使用一键安装，详见设置页顶部',
+        'need_winget_for_install_title'.tr,
+        'need_winget_for_install_body'.tr,
         snackPosition: SnackPosition.TOP,
         duration: const Duration(seconds: 5),
       );
@@ -2242,8 +2267,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       if (result.exitCode == 0) {
         await detectPython();
         Get.snackbar(
-          '安装完成',
-          'Python 已安装，请重启应用后点击「一键安装」继续',
+          'snackbar_install_done_short'.tr,
+          'snackbar_python_installed_body'.tr,
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 6),
         );
@@ -2252,7 +2277,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       return false;
     } catch (e) {
       pythonInstallLog.value += '\n✗ 执行出错: $e';
-      Get.snackbar('安装失败', '$e');
+      Get.snackbar('snackbar_install_failed'.tr, '$e');
       return false;
     } finally {
       isPythonInstalling.value = false;
@@ -2262,7 +2287,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
   Future<void> installEnvironment() async {
     if (isInstalling.value) return;
     if (repoPath.value.isEmpty) {
-      Get.snackbar('提示', '请等待仓库初始化完成，或先在数据页选择仓库路径');
+      Get.snackbar('tip'.tr, 'snackbar_wait_repo'.tr);
       return;
     }
     isInstalling.value = true;
@@ -2399,7 +2424,7 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       installLog.value += '=' * 50 + '\n';
       if (failed.isEmpty) {
         installLog.value += '✓ 全部依赖安装完成！\n';
-        Get.snackbar('安装成功', '全部依赖已安装完成');
+        Get.snackbar('snackbar_install_ok'.tr, 'snackbar_install_ok_body'.tr);
         await checkEnvironment();
       } else {
         installLog.value += '✗ 以下包安装失败，请查看上方日志：\n';
@@ -2407,14 +2432,14 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           installLog.value += '   • $f\n';
         }
         Get.snackbar(
-          '安装部分失败',
-          '${failed.join("、")} 安装失败，请查看日志',
+          'snackbar_install_partial_title'.tr,
+          'snackbar_install_partial_body'.trParams({'list': failed.join(', ')}),
           duration: const Duration(seconds: 6),
         );
       }
     } catch (e) {
       installLog.value += '\n异常: $e';
-      Get.snackbar('安装失败', '$e');
+      Get.snackbar('snackbar_install_failed'.tr, '$e');
     } finally {
       isInstalling.value = false;
     }
@@ -2503,8 +2528,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             '✓ MSVC cl.exe 已在 PATH 中\n'
             '编译工具已就绪，无需重复安装。\n';
         Get.snackbar(
-          '编译工具',
-          'ninja 与 MSVC 均已安装',
+          'snackbar_buildtools_ready'.tr,
+          'snackbar_buildtools_ready_body'.tr,
           snackPosition: SnackPosition.TOP,
         );
         return;
@@ -2541,8 +2566,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         if (buildToolsFullyReady.value) {
           buildToolsLog.value += '✓ ninja 与 MSVC 均已就绪，无需继续安装。\n';
           Get.snackbar(
-            '编译工具',
-            'ninja 与 MSVC 均已安装',
+            'snackbar_buildtools_ready'.tr,
+            'snackbar_buildtools_ready_body'.tr,
             snackPosition: SnackPosition.TOP,
           );
           return;
@@ -2566,8 +2591,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             '✓ 已检测到 MSVC cl.exe，无需重复安装\n'
             '  ${(clCheck.stdout as String).trim()}\n';
         Get.snackbar(
-          '编译工具',
-          '已检测到 MSVC，无需重复安装',
+          'snackbar_buildtools_ready'.tr,
+          'snackbar_buildtools_msvc_ok'.tr,
           snackPosition: SnackPosition.TOP,
         );
         return;
@@ -2576,8 +2601,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
       if (!wingetInstalled.value && Platform.isWindows) {
         buildToolsLog.value += '✗ 安装 MSVC 需先安装 winget，详见设置页顶部「应用安装程序」\n';
         Get.snackbar(
-          '需先安装 winget',
-          '请先安装「应用安装程序」以通过 winget 安装 MSVC，详见设置页顶部',
+          'need_winget_for_install_title'.tr,
+          'snackbar_need_winget_msvc'.tr,
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 5),
         );
@@ -2588,8 +2613,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         buildToolsLog.value +=
             '✗ 非 Windows 系统请自行安装 C++ 编译器（如 gcc/clang）并确保与 CUDA 配套。\n';
         Get.snackbar(
-          '仅 Windows 支持一键安装 MSVC',
-          '请手动配置编译器',
+          'tip'.tr,
+          'snackbar_non_windows_msvc'.tr,
           snackPosition: SnackPosition.TOP,
         );
         return;
@@ -2628,8 +2653,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             '\n✓ MSVC 编译工具安装完成！\n'
             '  请重启应用后重新运行训练\n';
         Get.snackbar(
-          '安装完成',
-          'MSVC 已安装，请重启应用后再训练',
+          'snackbar_install_done_short'.tr,
+          'snackbar_msvc_installed'.tr,
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 6),
         );
@@ -2650,8 +2675,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
               '✓ 已检测到 cl.exe，可直接编译 CUDA 扩展\n'
               '  ${(clAfter.stdout as String).trim()}\n';
           Get.snackbar(
-            '编译工具就绪',
-            'MSVC 已在 PATH 中，可直接训练',
+            'snackbar_buildtools_ready'.tr,
+            'msvc_ready_to_train'.tr,
             snackPosition: SnackPosition.TOP,
             duration: const Duration(seconds: 5),
           );
@@ -2663,8 +2688,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
               '  安装完成后重启本应用或从「x64 Native Tools Command Prompt」验证 where cl。\n'
               '  手动下载： https://aka.ms/vs/17/release/vs_buildtools.exe\n';
           Get.snackbar(
-            '需补全组件或重启',
-            'Build Tools 已登记但 cl 未进 PATH，请用安装程序补全 C++ 工作负载后重启',
+            'snackbar_msvc_partial'.tr,
+            'snackbar_msvc_partial_body'.tr,
             snackPosition: SnackPosition.TOP,
             duration: const Duration(seconds: 10),
           );
@@ -2676,15 +2701,15 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
             '  https://aka.ms/vs/17/release/vs_buildtools.exe\n'
             '  安装时只勾选 "MSVC v143" 和 "Windows SDK" 两项即可\n';
         Get.snackbar(
-          '安装失败',
-          '请手动安装 VS Build Tools',
+          'error'.tr,
+          'snackbar_msvc_failed'.tr,
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 8),
         );
       }
     } catch (e) {
       buildToolsLog.value += '异常: $e\n';
-      Get.snackbar('安装失败', '$e');
+      Get.snackbar('snackbar_install_failed'.tr, '$e');
     } finally {
       isBuildToolsInstalling.value = false;
       await detectBuildTools();
@@ -2717,8 +2742,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
         }
         checkLog.value += '\n缺少: ${missing.join(", ")}';
         Get.snackbar(
-          '环境检测',
-          '请点击「一键安装」安装 UV 和依赖',
+          'snackbar_env_check'.tr,
+          'snackbar_env_use_install'.tr,
           snackPosition: SnackPosition.TOP,
           duration: const Duration(seconds: 5),
         );
@@ -2795,7 +2820,11 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           envReady.value = true;
           _detectGpu();
           checkLog.value += '\n所有环境已经准备好';
-          Get.snackbar('环境检测', '所有环境已准备好', snackPosition: SnackPosition.TOP);
+          Get.snackbar(
+            'snackbar_env_check'.tr,
+            'snackbar_env_ready'.tr,
+            snackPosition: SnackPosition.TOP,
+          );
         } else {
           checkLog.value += '\n缺少或需重装: ${missing.join(", ")}';
           if (!_hasGuidedToSettings) {
@@ -2804,8 +2833,8 @@ print(f"Saved {len(state_dict_to_save)} state weights to: {save_path}")
           }
           if (!torchHasCuda && missing.contains('torch(CUDA)')) {
             Get.snackbar(
-              '环境检测',
-              'torch 未启用 CUDA，请更新 NVIDIA 显卡驱动至最新版本',
+              'snackbar_env_check'.tr,
+              'snackbar_torch_no_cuda'.tr,
               snackPosition: SnackPosition.TOP,
               duration: const Duration(seconds: 5),
             );

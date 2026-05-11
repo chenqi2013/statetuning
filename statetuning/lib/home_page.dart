@@ -5,6 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'home_controller.dart';
+import 'l10n/app_locale.dart';
+
+String _presetDisplayLabel(String label) =>
+    label == '自定义' ? 'preset_custom'.tr : label;
 
 class HomePage extends GetView<HomeController> {
   const HomePage({super.key});
@@ -59,7 +63,7 @@ class HomePage extends GetView<HomeController> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      '正在初始化仓库...',
+                      'clone_repo_initializing'.tr,
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 16,
@@ -91,34 +95,105 @@ class HomePage extends GetView<HomeController> {
         ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(
-            'State-Tuning Studio',
-            style: TextStyle(
+          Text(
+            'app_title'.tr,
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 20,
               fontWeight: FontWeight.w600,
             ),
           ),
+          const Spacer(),
+          _buildLanguageMenu(),
           Obx(() {
             if (!controller.envReady.value) return const SizedBox.shrink();
-            return Row(
-              children: [
-                _chip(Icons.memory, 'GPU: ${controller.gpuInfo.value}'),
-                const SizedBox(width: 16),
-                _chip(
-                  controller.isTraining.value ? Icons.play_arrow : Icons.circle,
-                  controller.status.value,
-                  color: controller.isTraining.value
-                      ? const Color(0xFF22C55E)
-                      : const Color(0xFFB0B5BC),
-                ),
-              ],
+            return Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: Row(
+                children: [
+                  _chip(
+                    Icons.memory,
+                    'gpu_chip'.trParams({'v': controller.gpuInfo.value}),
+                  ),
+                  const SizedBox(width: 16),
+                  _chip(
+                    controller.isTraining.value
+                        ? Icons.play_arrow
+                        : Icons.circle,
+                    controller.status.value,
+                    color: controller.isTraining.value
+                        ? const Color(0xFF22C55E)
+                        : const Color(0xFFB0B5BC),
+                  ),
+                ],
+              ),
             );
           }),
         ],
       ),
+    );
+  }
+
+  bool _sameLocale(Locale? a, Locale b) {
+    if (a == null) return false;
+    return a.languageCode == b.languageCode &&
+        (a.countryCode ?? '') == (b.countryCode ?? '');
+  }
+
+  Widget _buildLanguageMenu() {
+    final current = Get.locale ?? Get.fallbackLocale;
+    return PopupMenuButton<Locale>(
+      tooltip: 'tooltip_language'.tr,
+      position: PopupMenuPosition.under,
+      color: const Color(0xFF2A2F38),
+      icon: const Icon(
+        Icons.language_outlined,
+        color: Color(0xFFB0B5BC),
+        size: 22,
+      ),
+      onSelected: Get.updateLocale,
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: kAppSupportedLocales[0],
+          child: Row(
+            children: [
+              if (_sameLocale(current, kAppSupportedLocales[0]))
+                const Icon(Icons.check, size: 18, color: Color(0xFF3B82F6))
+              else
+                const SizedBox(width: 18),
+              const SizedBox(width: 8),
+              const Text('English', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: kAppSupportedLocales[1],
+          child: Row(
+            children: [
+              if (_sameLocale(current, kAppSupportedLocales[1]))
+                const Icon(Icons.check, size: 18, color: Color(0xFF3B82F6))
+              else
+                const SizedBox(width: 18),
+              const SizedBox(width: 8),
+              const Text('简体中文', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: kAppSupportedLocales[2],
+          child: Row(
+            children: [
+              if (_sameLocale(current, kAppSupportedLocales[2]))
+                const Icon(Icons.check, size: 18, color: Color(0xFF3B82F6))
+              else
+                const SizedBox(width: 18),
+              const SizedBox(width: 8),
+              const Text('繁體中文', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -139,8 +214,16 @@ class HomePage extends GetView<HomeController> {
 
   // ─── Tab Bar ─────────────────────────────────────────────────────────────────
 
-  /// 内容索引 -> 标签。0=模型 1=数据 2=训练 3=监控 4=导出 5=设置 6=测试
-  static const _tabLabels = ['模型', '数据', '训练', '监控', '导出', '设置', '测试'];
+  /// Content index -> label. 0=model … 6=test
+  List<String> _tabLabels() => [
+    'tab_model'.tr,
+    'tab_data'.tr,
+    'tab_train'.tr,
+    'tab_monitor'.tr,
+    'tab_export'.tr,
+    'tab_settings'.tr,
+    'tab_test'.tr,
+  ];
 
   /// 环境未就绪时设置放第一位，就绪后放最后
   List<int> _tabOrder() =>
@@ -151,8 +234,10 @@ class HomePage extends GetView<HomeController> {
       final order = _tabOrder();
       return Container(
         color: const Color(0xFF1A1D21),
-        child: Row(
-          children: order.map((contentIndex) {
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: order.map((contentIndex) {
             final selected = controller.currentTabIndex.value == contentIndex;
             return GestureDetector(
               onTap: () => controller.setTabIndex(contentIndex),
@@ -172,7 +257,7 @@ class HomePage extends GetView<HomeController> {
                   ),
                 ),
                 child: Text(
-                  _tabLabels[contentIndex],
+                  _tabLabels()[contentIndex],
                   style: TextStyle(
                     color: selected ? Colors.white : const Color(0xFF6B7280),
                     fontSize: 15,
@@ -182,6 +267,7 @@ class HomePage extends GetView<HomeController> {
               ),
             );
           }).toList(),
+          ),
         ),
       );
     });
@@ -196,7 +282,7 @@ class HomePage extends GetView<HomeController> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionCard(
-            title: '模型规格预设',
+            title: 'model_specs_preset'.tr,
             child: Obx(
               () => Wrap(
                 spacing: 12,
@@ -223,7 +309,7 @@ class HomePage extends GetView<HomeController> {
                         ),
                       ),
                       child: Text(
-                        p.label,
+                        _presetDisplayLabel(p.label),
                         style: TextStyle(
                           color: selected
                               ? Colors.white
@@ -242,33 +328,33 @@ class HomePage extends GetView<HomeController> {
           ),
           const SizedBox(height: 20),
           _sectionCard(
-            title: '模型文件路径',
+            title: 'model_file_path'.tr,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _labeledField(
-                  '预训练模型 (.pth)',
+                  'label_pretrained_pth'.tr,
                   controller.modelPathController,
-                  hint: '选择或粘贴路径，自动读取模型尺寸',
+                  hint: 'hint_model_path'.tr,
                   onBrowse: controller.pickModelFile,
                   browseIcon: Icons.file_open,
                 ),
                 Obx(() {
                   if (!controller.isDetectingModel.value)
                     return const SizedBox.shrink();
-                  return const Padding(
-                    padding: EdgeInsets.only(top: 10),
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 10),
                     child: Row(
                       children: [
-                        SizedBox(
+                        const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                        SizedBox(width: 10),
+                        const SizedBox(width: 10),
                         Text(
-                          '正在读取模型尺寸...',
-                          style: TextStyle(
+                          'reading_model_dims'.tr,
+                          style: const TextStyle(
                             color: Color(0xFF9CA3AF),
                             fontSize: 13,
                           ),
@@ -282,12 +368,12 @@ class HomePage extends GetView<HomeController> {
           ),
           const SizedBox(height: 20),
           _sectionCard(
-            title: 'ModelArgs（高级）',
+            title: 'modelargs_advanced'.tr,
             child: Row(
               children: [
                 Expanded(
                   child: _labeledField(
-                    '词表大小 (vocab_size)',
+                    'label_vocab_size'.tr,
                     controller.vocabSizeController,
                     hint: '65536',
                     keyboardType: TextInputType.number,
@@ -297,7 +383,7 @@ class HomePage extends GetView<HomeController> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: _labeledField(
-                    '嵌入维度 (n_embd)',
+                    'label_n_embd'.tr,
                     controller.nEmbdController,
                     hint: '1024',
                     keyboardType: TextInputType.number,
@@ -307,7 +393,7 @@ class HomePage extends GetView<HomeController> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: _labeledField(
-                    '层数 (n_layer)',
+                    'label_n_layer'.tr,
                     controller.nLayerController,
                     hint: '24',
                     keyboardType: TextInputType.number,
@@ -323,7 +409,7 @@ class HomePage extends GetView<HomeController> {
             child: ElevatedButton.icon(
               onPressed: () => controller.setTabIndex(1),
               icon: const Icon(Icons.arrow_forward),
-              label: const Text('下一步: 数据配置'),
+              label: Text('next_data_config'.tr),
               style: _btnStyle(const Color(0xFF3B82F6)),
             ),
           ),
@@ -366,13 +452,13 @@ class HomePage extends GetView<HomeController> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionCard(
-            title: '训练仓库',
+            title: 'train_repo'.tr,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  '首次进入已自动解压内置仓库到 exe 同目录，可直接使用。',
-                  style: TextStyle(
+                Text(
+                  'train_repo_desc'.tr,
+                  style: const TextStyle(
                     color: Color(0xFFB0B5BC),
                     fontSize: 13,
                     height: 1.4,
@@ -380,9 +466,9 @@ class HomePage extends GetView<HomeController> {
                 ),
                 const SizedBox(height: 12),
                 _labeledField(
-                  '仓库路径',
+                  'label_repo_path'.tr,
                   controller.repoPathController,
-                  hint: '默认：exe 同目录 / statetuning_repo',
+                  hint: 'hint_repo_path_default'.tr,
                   onBrowse: controller.pickRepoDir,
                 ),
                 const SizedBox(height: 12),
@@ -393,7 +479,7 @@ class HomePage extends GetView<HomeController> {
                           ? null
                           : controller.checkRepo,
                       icon: const Icon(Icons.check_circle_outline, size: 18),
-                      label: const Text('检查路径'),
+                      label: Text('btn_check_path'.tr),
                       style: _btnStyle(const Color(0xFF6B7280), compact: true),
                     ),
                     const SizedBox(width: 12),
@@ -405,7 +491,7 @@ class HomePage extends GetView<HomeController> {
                               ? null
                               : controller.initRepoFromBundle,
                           icon: const Icon(Icons.folder_copy, size: 16),
-                          label: const Text('解压到此处'),
+                          label: Text('btn_extract_here'.tr),
                           style: TextButton.styleFrom(
                             foregroundColor: const Color(0xFF6366F1),
                           ),
@@ -420,7 +506,7 @@ class HomePage extends GetView<HomeController> {
                   () => _logBox(
                     controller.repoLog.value,
                     minHeight: 50,
-                    placeholder: '仓库状态显示在此',
+                    placeholder: 'repo_log_placeholder'.tr,
                   ),
                 ),
               ],
@@ -428,13 +514,13 @@ class HomePage extends GetView<HomeController> {
           ),
           const SizedBox(height: 20),
           _sectionCard(
-            title: '训练数据',
+            title: 'train_data'.tr,
             child: Column(
               children: [
                 _labeledField(
-                  'JSONL 数据文件路径',
+                  'label_jsonl_path'.tr,
                   controller.dataPathController,
-                  hint: '点击右侧按钮选择文件',
+                  hint: 'hint_jsonl_pick'.tr,
                   onBrowse: controller.pickDataFile,
                   browseIcon: Icons.file_open,
                 ),
@@ -448,22 +534,21 @@ class HomePage extends GetView<HomeController> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: const Color(0xFF3A3F47)),
                     ),
-                    child: const Column(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '数据格式示例 (每行一个 JSON):',
-                          style: TextStyle(
+                          'data_format_title'.tr,
+                          style: const TextStyle(
                             color: Color(0xFF6B7280),
                             fontSize: 12,
                           ),
                         ),
-                        SizedBox(height: 6),
+                        const SizedBox(height: 6),
                         SelectableText(
-                          '{"text": "User: 你好\\n\\nAssistant: 你好！有什么可以帮助你的吗？\\n\\n"}\n'
-                          '{"text": "User: 讲个笑话\\n\\nAssistant: 好的...\\n\\n"}',
-                          style: TextStyle(
+                          'data_format_example_line'.tr,
+                          style: const TextStyle(
                             color: Color(0xFF86EFAC),
                             fontSize: 12,
                             fontFamily: 'monospace',
@@ -479,11 +564,11 @@ class HomePage extends GetView<HomeController> {
           ),
           const SizedBox(height: 20),
           _sectionCard(
-            title: '输出目录',
+            title: 'output_dir_section'.tr,
             child: _labeledField(
-              '输出目录',
+              'label_output_dir'.tr,
               controller.outputDirController,
-              hint: '点击右侧按钮选择文件夹',
+              hint: 'hint_output_dir'.tr,
               onBrowse: controller.pickOutputDir,
             ),
           ),
@@ -493,7 +578,7 @@ class HomePage extends GetView<HomeController> {
             child: ElevatedButton.icon(
               onPressed: () => controller.setTabIndex(2),
               icon: const Icon(Icons.arrow_forward),
-              label: const Text('下一步: 训练参数'),
+              label: Text('next_train_params'.tr),
               style: _btnStyle(const Color(0xFF3B82F6)),
             ),
           ),
@@ -511,14 +596,14 @@ class HomePage extends GetView<HomeController> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionCard(
-            title: '训练超参数',
+            title: 'train_hyperparams'.tr,
             child: Column(
               children: [
                 Row(
                   children: [
                     Expanded(
                       child: _labeledField(
-                        'Batch Size',
+                        'label_batch_size'.tr,
                         controller.batchSizeController,
                         hint: '4',
                         keyboardType: TextInputType.number,
@@ -527,7 +612,7 @@ class HomePage extends GetView<HomeController> {
                     const SizedBox(width: 16),
                     Expanded(
                       child: _labeledField(
-                        '训练步数 (num_steps)',
+                        'label_num_steps'.tr,
                         controller.numStepsController,
                         hint: '1000',
                         keyboardType: TextInputType.number,
@@ -540,7 +625,7 @@ class HomePage extends GetView<HomeController> {
                   children: [
                     Expanded(
                       child: _labeledField(
-                        '训练轮数 (num_epochs)',
+                        'label_num_epochs'.tr,
                         controller.numEpochsController,
                         hint: '1',
                         keyboardType: TextInputType.number,
@@ -549,7 +634,7 @@ class HomePage extends GetView<HomeController> {
                     const SizedBox(width: 16),
                     Expanded(
                       child: _labeledField(
-                        '学习率',
+                        'label_lr'.tr,
                         controller.learningRateController,
                         hint: '1e-5',
                       ),
@@ -561,7 +646,7 @@ class HomePage extends GetView<HomeController> {
                   children: [
                     Expanded(
                       child: _labeledField(
-                        '上下文长度 (ctx_len)',
+                        'label_ctx_len'.tr,
                         controller.ctxLenController,
                         hint: '512',
                         keyboardType: TextInputType.number,
@@ -572,9 +657,9 @@ class HomePage extends GetView<HomeController> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            '训练精度',
-                            style: TextStyle(
+                          Text(
+                            'label_train_precision'.tr,
+                            style: const TextStyle(
                               color: Color(0xFF9CA3AF),
                               fontSize: 13,
                             ),
@@ -611,41 +696,50 @@ class HomePage extends GetView<HomeController> {
           const SizedBox(height: 20),
           Obx(
             () => _sectionCard(
-              title: '配置摘要',
+              title: 'config_summary'.tr,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _summaryRow(
-                    '仓库路径',
+                    'summary_repo'.tr,
                     controller.repoPath.value.isEmpty
-                        ? '未设置'
+                        ? 'value_not_set'.tr
                         : controller.repoPath.value,
                   ),
                   _summaryRow(
-                    '模型文件',
+                    'summary_model_file'.tr,
                     controller.modelPath.value.isEmpty
-                        ? '未设置'
+                        ? 'value_not_set'.tr
                         : controller.modelPath.value,
                   ),
                   _summaryRow(
-                    '数据文件',
+                    'summary_data_file'.tr,
                     controller.dataPath.value.isEmpty
-                        ? '未设置'
+                        ? 'value_not_set'.tr
                         : controller.dataPath.value,
                   ),
-                  _summaryRow('输出目录', controller.outputDir.value),
-                  _summaryRow('精度', controller.precisionString.toUpperCase()),
-                  _summaryRow('模型规格', controller.selectedPreset.value),
+                  _summaryRow('summary_output_dir'.tr, controller.outputDir.value),
                   _summaryRow(
-                    'n_embd / n_layer',
+                    'summary_precision'.tr,
+                    controller.precisionString.toUpperCase(),
+                  ),
+                  _summaryRow(
+                    'summary_model_spec'.tr,
+                    _presetDisplayLabel(controller.selectedPreset.value),
+                  ),
+                  _summaryRow(
+                    'summary_embd_layer'.tr,
                     '${controller.nEmbd.value} / ${controller.nLayer.value}',
                   ),
-                  _summaryRow('ctx_len', '${controller.ctxLen.value}'),
                   _summaryRow(
-                    'batch / steps / epochs',
+                    'summary_ctx_len'.tr,
+                    '${controller.ctxLen.value}',
+                  ),
+                  _summaryRow(
+                    'summary_batch_steps_epochs'.tr,
                     '${controller.batchSize.value} / ${controller.numSteps.value} / ${controller.numEpochs.value}',
                   ),
-                  _summaryRow('学习率', controller.learningRate.value),
+                  _summaryRow('summary_lr'.tr, controller.learningRate.value),
                 ],
               ),
             ),
@@ -671,7 +765,9 @@ class HomePage extends GetView<HomeController> {
                           )
                         : const Icon(Icons.rocket_launch),
                     label: Text(
-                      controller.isTraining.value ? '训练中...' : '开始训练',
+                      controller.isTraining.value
+                          ? 'train_in_progress'.tr
+                          : 'train_start'.tr,
                     ),
                     style: _btnStyle(const Color(0xFF22C55E)),
                   ),
@@ -682,7 +778,7 @@ class HomePage extends GetView<HomeController> {
                     child: ElevatedButton.icon(
                       onPressed: controller.stopTraining,
                       icon: const Icon(Icons.stop),
-                      label: const Text('停止训练'),
+                      label: Text('train_btn_stop'.tr),
                       style: _btnStyle(const Color(0xFFEF4444)),
                     ),
                   ),
@@ -702,10 +798,13 @@ class HomePage extends GetView<HomeController> {
               children: [
                 Icon(Icons.info_outline, size: 16, color: Colors.blue[300]),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    '点击「开始训练」会直接在仓库目录运行 train.py 并传入参数，训练日志实时显示在「监控」标签页。',
-                    style: TextStyle(color: Color(0xFFB0B5BC), fontSize: 12),
+                    'train_hint_footer'.tr,
+                    style: const TextStyle(
+                      color: Color(0xFFB0B5BC),
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ],
@@ -762,7 +861,7 @@ class HomePage extends GetView<HomeController> {
                   child: ElevatedButton.icon(
                     onPressed: controller.exportLossLog,
                     icon: const Icon(Icons.file_present, size: 18),
-                    label: const Text('导出 train_loss.jsonl'),
+                    label: Text('monitor_export_loss_jsonl'.tr),
                     style: _btnStyle(const Color(0xFF3B82F6), compact: true),
                   ),
                 );
@@ -775,7 +874,7 @@ class HomePage extends GetView<HomeController> {
                   child: ElevatedButton.icon(
                     onPressed: () => _showLossChart(context),
                     icon: const Icon(Icons.show_chart, size: 18),
-                    label: const Text('查看Loss曲线'),
+                    label: Text('monitor_view_loss_chart'.tr),
                     style: _btnStyle(const Color(0xFF7C3AED), compact: true),
                   ),
                 );
@@ -786,7 +885,7 @@ class HomePage extends GetView<HomeController> {
                 return ElevatedButton.icon(
                   onPressed: controller.stopTraining,
                   icon: const Icon(Icons.stop, size: 18),
-                  label: const Text('停止训练'),
+                  label: Text('train_btn_stop'.tr),
                   style: _btnStyle(const Color(0xFFEF4444), compact: true),
                 );
               }),
@@ -794,7 +893,7 @@ class HomePage extends GetView<HomeController> {
               ElevatedButton.icon(
                 onPressed: () => controller.trainingLog.value = '',
                 icon: const Icon(Icons.clear, size: 18),
-                label: const Text('清空日志'),
+                label: Text('monitor_clear_log'.tr),
                 style: _btnStyle(const Color(0xFF3A3F47), compact: true),
               ),
             ],
@@ -814,7 +913,7 @@ class HomePage extends GetView<HomeController> {
                 child: SingleChildScrollView(
                   reverse: true,
                   child: SelectableText(
-                    log.isEmpty ? '训练日志将在此实时显示...' : log,
+                    log.isEmpty ? 'monitor_log_placeholder'.tr : log,
                     style: TextStyle(
                       color: log.isEmpty
                           ? const Color(0xFF4B5563)
@@ -856,9 +955,9 @@ class HomePage extends GetView<HomeController> {
                       size: 22,
                     ),
                     const SizedBox(width: 10),
-                    const Text(
-                      'Training Loss 曲线',
-                      style: TextStyle(
+                    Text(
+                      'monitor_loss_curve_title'.tr,
+                      style: const TextStyle(
                         color: Color(0xFFE2E8F0),
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -867,7 +966,9 @@ class HomePage extends GetView<HomeController> {
                     const Spacer(),
                     Obx(
                       () => Text(
-                        '共 ${controller.lossHistory.length} 步',
+                        'loss_steps_total'.trParams({
+                          'n': '${controller.lossHistory.length}',
+                        }),
                         style: const TextStyle(
                           color: Color(0xFF6B7280),
                           fontSize: 13,
@@ -895,8 +996,11 @@ class HomePage extends GetView<HomeController> {
 
   Widget _buildLossChart(List<double> losses) {
     if (losses.isEmpty) {
-      return const Center(
-        child: Text('暂无 Loss 数据', style: TextStyle(color: Color(0xFF6B7280))),
+      return Center(
+        child: Text(
+          'monitor_no_loss_data'.tr,
+          style: const TextStyle(color: Color(0xFF6B7280)),
+        ),
       );
     }
 
@@ -945,9 +1049,9 @@ class HomePage extends GetView<HomeController> {
         ),
         titlesData: FlTitlesData(
           leftTitles: AxisTitles(
-            axisNameWidget: const Text(
-              'Loss',
-              style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+            axisNameWidget: Text(
+              'monitor_axis_loss'.tr,
+              style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
             ),
             sideTitles: SideTitles(
               showTitles: true,
@@ -959,9 +1063,9 @@ class HomePage extends GetView<HomeController> {
             ),
           ),
           bottomTitles: AxisTitles(
-            axisNameWidget: const Text(
-              'Step',
-              style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+            axisNameWidget: Text(
+              'monitor_axis_step'.tr,
+              style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
             ),
             sideTitles: SideTitles(
               showTitles: true,
@@ -985,7 +1089,10 @@ class HomePage extends GetView<HomeController> {
             getTooltipItems: (spots) => spots
                 .map(
                   (s) => LineTooltipItem(
-                    'Step ${s.x.toInt()}\nLoss: ${s.y.toStringAsFixed(4)}',
+                    'monitor_tooltip_loss'.trParams({
+                      'x': '${s.x.toInt()}',
+                      'y': s.y.toStringAsFixed(4),
+                    }),
                     const TextStyle(color: Color(0xFFE2E8F0), fontSize: 12),
                   ),
                 )
@@ -1024,7 +1131,7 @@ class HomePage extends GetView<HomeController> {
             const Icon(Icons.circle, size: 10, color: Color(0xFF6B7280)),
           const SizedBox(width: 8),
           Text(
-            isTraining ? '训练进行中' : '待机',
+            isTraining ? 'monitor_badge_training'.tr : 'monitor_badge_idle'.tr,
             style: TextStyle(
               color: isTraining
                   ? const Color(0xFF22C55E)
@@ -1047,13 +1154,15 @@ class HomePage extends GetView<HomeController> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionCard(
-            title: '输出文件',
+            title: 'export_output_files'.tr,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Obx(
                   () => Text(
-                    '输出目录: ${controller.outputDir.value}',
+                    'export_output_dir_label'.trParams({
+                      'path': controller.outputDir.value,
+                    }),
                     style: const TextStyle(
                       color: Color(0xFF6B7280),
                       fontSize: 13,
@@ -1064,7 +1173,7 @@ class HomePage extends GetView<HomeController> {
                 ElevatedButton.icon(
                   onPressed: controller.refreshOutputFiles,
                   icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('刷新文件列表'),
+                  label: Text('export_refresh_list'.tr),
                   style: _btnStyle(const Color(0xFF3B82F6), compact: true),
                 ),
                 const SizedBox(height: 16),
@@ -1078,11 +1187,11 @@ class HomePage extends GetView<HomeController> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: const Color(0xFF3A3F47)),
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Text(
-                          '暂无输出文件\n训练完成后，.state.pth 权重文件将显示在这里',
+                          'export_no_files'.tr,
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: Color(0xFF4B5563),
                             fontSize: 14,
                           ),
@@ -1099,13 +1208,10 @@ class HomePage extends GetView<HomeController> {
           ),
           const SizedBox(height: 20),
           _sectionCard(
-            title: '使用说明',
-            child: const Text(
-              '训练完成后，State 权重文件 (.state.pth) 可加载到 RWKV 推理框架中。\n\n'
-              '• 与原始 .pth 模型权重分开存储，体积极小\n'
-              '• 只包含经过微调的 state 参数，pth 格式避免混淆\n'
-              '• 推理时合并使用: model.pth + xxx.state.pth',
-              style: TextStyle(
+            title: 'export_usage_title'.tr,
+            child: Text(
+              'export_usage_body'.tr,
+              style: const TextStyle(
                 color: Color(0xFFB0B5BC),
                 fontSize: 13,
                 height: 1.7,
@@ -1164,30 +1270,30 @@ class HomePage extends GetView<HomeController> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionCard(
-            title: '模型加载测试',
+            title: 'test_model_load_title'.tr,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _labeledField(
-                  '.pth 模型文件',
+                  'label_test_pth'.tr,
                   controller.testModelPathController,
-                  hint: '选择 RWKV 模型文件',
+                  hint: 'hint_test_pth'.tr,
                   onBrowse: controller.pickTestModelFile,
                   browseIcon: Icons.file_open,
                 ),
                 const SizedBox(height: 12),
                 _labeledField(
-                  'Tokenizer 文件',
+                  'label_tokenizer'.tr,
                   controller.testTokenizerPathController,
-                  hint: '例如 rwkv_vocab_v20230424.txt',
+                  hint: 'hint_tokenizer'.tr,
                   onBrowse: controller.pickTestTokenizerFile,
                   browseIcon: Icons.file_open,
                 ),
                 const SizedBox(height: 12),
                 _labeledField(
-                  'State 文件',
+                  'label_state_file'.tr,
                   controller.testStatePathController,
-                  hint: '.state（当前仅展示入口）',
+                  hint: 'hint_state_file'.tr,
                   onBrowse: controller.pickTestStateFile,
                   browseIcon: Icons.file_open,
                 ),
@@ -1211,7 +1317,9 @@ class HomePage extends GetView<HomeController> {
                                 )
                               : const Icon(Icons.play_circle_outline),
                           label: Text(
-                            controller.isRwkvLoading.value ? '加载中...' : '加载模型',
+                            controller.isRwkvLoading.value
+                                ? 'btn_load_model_loading'.tr
+                                : 'btn_load_model'.tr,
                           ),
                           style: _btnStyle(const Color(0xFF3B82F6)),
                         ),
@@ -1221,7 +1329,7 @@ class HomePage extends GetView<HomeController> {
                         child: ElevatedButton.icon(
                           onPressed: controller.clearRwkvChat,
                           icon: const Icon(Icons.clear_all),
-                          label: const Text('清空聊天'),
+                          label: Text('btn_clear_chat'.tr),
                           style: _btnStyle(const Color(0xFF6B7280)),
                         ),
                       ),
@@ -1231,7 +1339,7 @@ class HomePage extends GetView<HomeController> {
                 const SizedBox(height: 10),
                 Obx(
                   () => Text(
-                    '状态: ${controller.rwkvStatus.value}',
+                    '${'test_status_prefix'.tr}${controller.rwkvStatus.value}',
                     style: const TextStyle(
                       color: Color(0xFFB0B5BC),
                       fontSize: 13,
@@ -1259,7 +1367,7 @@ class HomePage extends GetView<HomeController> {
           ),
           const SizedBox(height: 20),
           _sectionCard(
-            title: '聊天测试窗口',
+            title: 'test_chat_title'.tr,
             child: Column(
               children: [
                 Obx(
@@ -1276,10 +1384,10 @@ class HomePage extends GetView<HomeController> {
                       border: Border.all(color: const Color(0xFF3A3F47)),
                     ),
                     child: controller.rwkvMessages.isEmpty
-                        ? const Center(
+                        ? Center(
                             child: Text(
-                              '加载模型后，在下方输入 prompt 并发送',
-                              style: TextStyle(
+                              'test_chat_empty'.tr,
+                              style: const TextStyle(
                                 color: Color(0xFF6B7280),
                                 fontSize: 13,
                               ),
@@ -1336,7 +1444,7 @@ class HomePage extends GetView<HomeController> {
                         controller: controller.testPromptController,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          hintText: '输入 prompt，例如：介绍一下 RWKV 的优势',
+                          hintText: 'test_prompt_hint'.tr,
                           hintStyle: const TextStyle(
                             color: Color(0xFF4B5563),
                             fontSize: 13,
@@ -1379,7 +1487,9 @@ class HomePage extends GetView<HomeController> {
                               )
                             : const Icon(Icons.send),
                         label: Text(
-                          controller.isRwkvGenerating.value ? '生成中...' : '发送',
+                          controller.isRwkvGenerating.value
+                              ? 'test_generating'.tr
+                              : 'test_send'.tr,
                         ),
                         style: _btnStyle(
                           const Color(0xFF22C55E),
@@ -1394,7 +1504,7 @@ class HomePage extends GetView<HomeController> {
                   () => _logBox(
                     controller.rwkvTestLog.value,
                     minHeight: 80,
-                    placeholder: '运行日志将在这里显示',
+                    placeholder: 'test_log_placeholder'.tr,
                   ),
                 ),
               ],
@@ -1424,13 +1534,13 @@ class HomePage extends GetView<HomeController> {
 
   Widget _buildSystemBaseCard() {
     return _sectionCard(
-      title: '系统基础（全新电脑必检）',
+      title: 'settings_system_base'.tr,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '以下为一键安装的先决条件，全新 Windows 请按顺序检查：',
-            style: TextStyle(
+          Text(
+            'settings_system_intro'.tr,
+            style: const TextStyle(
               color: Color(0xFFB0B5BC),
               fontSize: 13,
               height: 1.5,
@@ -1440,32 +1550,38 @@ class HomePage extends GetView<HomeController> {
           Obx(() {
             final winget = controller.wingetInstalled.value;
             return _buildStatusRow(
-              'winget（应用安装程序）',
+              'winget_row_title'.tr,
               winget,
-              description: 'Git / Python / CUDA / MSVC 等一键安装均依赖 winget',
+              description: 'winget_row_desc'.tr,
               onRetry: controller.detectWinget,
               whenMissing: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '全新系统可能未预装，请通过以下方式安装：',
-                    style: TextStyle(color: Color(0xFFFBBF24), fontSize: 12),
+                  Text(
+                    'winget_missing_intro'.tr,
+                    style: const TextStyle(
+                      color: Color(0xFFFBBF24),
+                      fontSize: 12,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: () =>
                         controller.openUrl('https://aka.ms/getwinget'),
                     icon: const Icon(Icons.open_in_new, size: 16),
-                    label: const Text('打开 winget 安装页'),
+                    label: Text('winget_btn_install_page'.tr),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF3B82F6),
                       side: const BorderSide(color: Color(0xFF3B82F6)),
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    '或运行 PowerShell（以管理员身份）：',
-                    style: TextStyle(color: Color(0xFF6B7280), fontSize: 11),
+                  Text(
+                    'winget_ps_hint'.tr,
+                    style: const TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 11,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   SelectableText(
@@ -1484,9 +1600,9 @@ class HomePage extends GetView<HomeController> {
           Obx(() {
             final uv = controller.uvInstalled.value;
             return _buildStatusRow(
-              'UV',
+              'uv_row_title'.tr,
               uv,
-              description: 'Python 虚拟环境工具，依赖安装到项目 python_venv 目录',
+              description: 'uv_row_desc'.tr,
               onRetry: controller.detectUv,
               whenMissing: ElevatedButton.icon(
                 onPressed: controller.isUvInstalling.value
@@ -1503,7 +1619,9 @@ class HomePage extends GetView<HomeController> {
                       )
                     : const Icon(Icons.download, size: 18),
                 label: Text(
-                  controller.isUvInstalling.value ? '安装中...' : '一键安装 UV',
+                  controller.isUvInstalling.value
+                      ? 'uv_installing'.tr
+                      : 'uv_install_btn'.tr,
                 ),
                 style: _btnStyle(const Color(0xFF7C3AED), compact: true),
               ),
@@ -1513,9 +1631,9 @@ class HomePage extends GetView<HomeController> {
           Obx(() {
             final nvidia = controller.nvidiaDriverInstalled.value;
             return _buildStatusRow(
-              'NVIDIA 驱动',
+              'nvidia_row_title'.tr,
               nvidia,
-              description: 'GPU 训练需先装驱动，再装 CUDA Toolkit（无 NVIDIA 显卡可跳过）',
+              description: 'nvidia_row_desc'.tr,
               onRetry: controller.detectNvidiaDriver,
               whenMissing: Row(
                 children: [
@@ -1524,7 +1642,7 @@ class HomePage extends GetView<HomeController> {
                       'https://www.nvidia.com/Download/index.aspx',
                     ),
                     icon: const Icon(Icons.open_in_new, size: 16),
-                    label: const Text('前往 NVIDIA 官网下载驱动'),
+                    label: Text('nvidia_btn_download'.tr),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF3B82F6),
                       side: const BorderSide(color: Color(0xFF3B82F6)),
@@ -1580,7 +1698,7 @@ class HomePage extends GetView<HomeController> {
                 TextButton.icon(
                   onPressed: onRetry,
                   icon: const Icon(Icons.refresh, size: 14),
-                  label: const Text('重新检测'),
+                  label: Text('btn_retry_detect'.tr),
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFF6B7280),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1605,14 +1723,13 @@ class HomePage extends GetView<HomeController> {
 
   Widget _buildCudaCard() {
     return _sectionCard(
-      title: 'CUDA 配置',
+      title: 'cuda_section_title'.tr,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'RWKV7 训练需要 CUDA Toolkit（CUDA_HOME 指向安装目录）。\n'
-            '启动时自动检测，未检测到可点击「一键安装 CUDA」或手动选择。',
-            style: TextStyle(
+          Text(
+            'cuda_section_desc'.tr,
+            style: const TextStyle(
               color: Color(0xFFB0B5BC),
               fontSize: 13,
               height: 1.5,
@@ -1620,10 +1737,9 @@ class HomePage extends GetView<HomeController> {
           ),
           const SizedBox(height: 14),
           _labeledField(
-            'CUDA 安装目录',
+            'cuda_dir_label'.tr,
             controller.cudaHomeController,
-            hint:
-                r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x 或 v13.x',
+            hint: 'cuda_hint_dir'.tr,
             onBrowse: controller.pickCudaHomeDir,
           ),
           const SizedBox(height: 12),
@@ -1632,7 +1748,7 @@ class HomePage extends GetView<HomeController> {
               ElevatedButton.icon(
                 onPressed: controller.detectCudaHome,
                 icon: const Icon(Icons.search, size: 18),
-                label: const Text('自动检测'),
+                label: Text('btn_auto_detect'.tr),
                 style: _btnStyle(const Color(0xFF3B82F6), compact: true),
               ),
               const SizedBox(width: 12),
@@ -1678,8 +1794,8 @@ class HomePage extends GetView<HomeController> {
                         : const Icon(Icons.download, size: 18),
                     label: Text(
                       controller.isCudaInstalling.value
-                          ? '安装中...'
-                          : '一键安装 CUDA',
+                          ? 'cuda_installing'.tr
+                          : 'cuda_install_btn'.tr,
                     ),
                     style: _btnStyle(const Color(0xFF7C3AED), compact: true),
                   ),
@@ -1692,7 +1808,7 @@ class HomePage extends GetView<HomeController> {
             () => _logBox(
               controller.cudaDetectLog.value,
               minHeight: 50,
-              placeholder: '点击「自动检测」检查 CUDA 安装',
+              placeholder: 'cuda_log_placeholder'.tr,
             ),
           ),
           Obx(() {
@@ -1703,7 +1819,7 @@ class HomePage extends GetView<HomeController> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _logLabel('CUDA 安装日志'),
+                  _logLabel('cuda_install_log_label'.tr),
                   const SizedBox(height: 8),
                   _logBox(controller.cudaInstallLog.value),
                 ],
@@ -1717,7 +1833,7 @@ class HomePage extends GetView<HomeController> {
 
   Widget _buildEnvCard() {
     return _sectionCard(
-      title: '环境配置',
+      title: 'env_section_title'.tr,
       child: Obx(() {
         final ready = controller.envReady.value;
         final checking = controller.isChecking.value;
@@ -1727,19 +1843,19 @@ class HomePage extends GetView<HomeController> {
           children: [
             // ── 环境就绪状态栏 ──────────────────────────────────────
             if (checking)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Row(
                   children: [
-                    SizedBox(
+                    const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Text(
-                      '正在检测环境...',
-                      style: TextStyle(color: Color(0xFFB0B5BC)),
+                      'env_checking'.tr,
+                      style: const TextStyle(color: Color(0xFFB0B5BC)),
                     ),
                   ],
                 ),
@@ -1757,7 +1873,7 @@ class HomePage extends GetView<HomeController> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        '所有环境已就绪',
+                        'env_all_ready'.tr,
                         style: TextStyle(
                           color: Colors.green[400],
                           fontSize: 15,
@@ -1768,7 +1884,7 @@ class HomePage extends GetView<HomeController> {
                     TextButton.icon(
                       onPressed: controller.checkEnvironment,
                       icon: const Icon(Icons.refresh, size: 16),
-                      label: const Text('重新检测'),
+                      label: Text('btn_retry_detect'.tr),
                       style: TextButton.styleFrom(
                         foregroundColor: const Color(0xFF6B7280),
                       ),
@@ -1783,28 +1899,30 @@ class HomePage extends GetView<HomeController> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.warning_amber_rounded,
                             color: Color(0xFFFBBF24),
                             size: 20,
                           ),
-                          SizedBox(width: 8),
-                          Text(
-                            '未检测到 UV，依赖将安装到项目目录',
-                            style: TextStyle(
-                              color: Color(0xFFFBBF24),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'env_uv_missing_title'.tr,
+                              style: const TextStyle(
+                                color: Color(0xFFFBBF24),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'UV 会创建 python_venv 虚拟环境，依赖装到项目目录，不占用 C 盘。',
-                        style: TextStyle(
+                      Text(
+                        'env_uv_missing_desc'.tr,
+                        style: const TextStyle(
                           color: Color(0xFFB0B5BC),
                           fontSize: 12,
                         ),
@@ -1828,15 +1946,15 @@ class HomePage extends GetView<HomeController> {
                               : const Icon(Icons.download),
                           label: Text(
                             controller.isUvInstalling.value
-                                ? '安装中...'
-                                : '一键安装 UV',
+                                ? 'uv_installing'.tr
+                                : 'env_one_click_uv'.tr,
                           ),
                           style: _btnStyle(const Color(0xFF7C3AED)),
                         ),
                       ),
                       if (controller.uvInstallLog.value.isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        _logLabel('UV 安装日志'),
+                        _logLabel('uv_install_log_title'.tr),
                         const SizedBox(height: 8),
                         Obx(() => _logBox(controller.uvInstallLog.value)),
                       ],
@@ -1848,10 +1966,9 @@ class HomePage extends GetView<HomeController> {
                 }
                 return const SizedBox.shrink();
               }),
-              const Text(
-                '以下依赖将安装到项目 python_venv 目录（不占 C 盘），点击「一键安装」：\n'
-                '(来源: github.com/Joluck/statetuning)',
-                style: TextStyle(
+              Text(
+                'env_deps_intro'.tr,
+                style: const TextStyle(
                   color: Color(0xFFB0B5BC),
                   fontSize: 14,
                   height: 1.5,
@@ -1865,14 +1982,9 @@ class HomePage extends GetView<HomeController> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: const Color(0xFF3A3F47)),
                 ),
-                child: const SelectableText(
-                  'UV 创建 python_venv → 安装：\n'
-                  'torch>=2.0.0  [GPU/CUDA，自动匹配 CUDA 版本]\n'
-                  'transformers>=4.30.0\n'
-                  'tqdm>=4.65.0\n'
-                  'huggingface-hub\n'
-                  'ninja          [CUDA 扩展构建]',
-                  style: TextStyle(
+                child: SelectableText(
+                  'env_deps_list'.tr,
+                  style: const TextStyle(
                     color: Color(0xFF86EFAC),
                     fontSize: 12,
                     fontFamily: 'monospace',
@@ -1897,7 +2009,11 @@ class HomePage extends GetView<HomeController> {
                               ),
                             )
                           : const Icon(Icons.install_desktop),
-                      label: Text(installing ? '安装中...' : '一键安装'),
+                      label: Text(
+                        installing
+                            ? 'env_build_installing'.tr
+                            : 'env_one_click_install'.tr,
+                      ),
                       style: _btnStyle(const Color(0xFF3B82F6)),
                     ),
                   ),
@@ -1917,7 +2033,11 @@ class HomePage extends GetView<HomeController> {
                               ),
                             )
                           : const Icon(Icons.verified_user),
-                      label: Text(checking ? '检测中...' : '检测环境'),
+                      label: Text(
+                        checking
+                            ? 'env_checking_btn'.tr
+                            : 'env_check_env'.tr,
+                      ),
                       style: _btnStyle(const Color(0xFF6B7280)),
                     ),
                   ),
@@ -1927,39 +2047,38 @@ class HomePage extends GetView<HomeController> {
             // ── 检测结果日志（有问题时才显示）────────────────────────
             if (!ready) ...[
               const SizedBox(height: 16),
-              _logLabel('检测结果'),
+              _logLabel('env_detect_result'.tr),
               const SizedBox(height: 8),
-              _logBox(controller.checkLog.value, placeholder: '正在检测环境...'),
+              _logBox(
+                controller.checkLog.value,
+                placeholder: 'env_placeholder_checking'.tr,
+              ),
             ],
             // ── 安装日志（有内容时才显示）────────────────────────────
             if (controller.installLog.value.isNotEmpty) ...[
               const SizedBox(height: 16),
-              _logLabel('安装日志'),
+              _logLabel('env_install_log'.tr),
               const SizedBox(height: 8),
               _logBox(
                 controller.installLog.value,
-                placeholder: '点击「一键安装」开始安装...',
+                placeholder: 'env_placeholder_install'.tr,
               ),
             ],
             const SizedBox(height: 24),
             const Divider(color: Color(0xFF3A3F47)),
             const SizedBox(height: 16),
-            const Text(
-              'CUDA 编译工具',
-              style: TextStyle(
+            Text(
+              'env_cuda_tools_title'.tr,
+              style: const TextStyle(
                 color: Color(0xFFE2E8F0),
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
-              '训练时需要实时编译 CUDA 内核（rwkv7_state_clampw），'
-              '必须安装 MSVC C++ 编译器。\n'
-              '点击下方按钮自动安装轻量版编译工具（约 1.5 GB，无 IDE）：\n'
-              '  • ninja  — 构建系统（pip 安装，几 MB）\n'
-              '  • MSVC C++ 编译器 + Windows SDK（通过 winget 安装）',
-              style: TextStyle(
+            Text(
+              'env_cuda_tools_desc'.tr,
+              style: const TextStyle(
                 color: Color(0xFFB0B5BC),
                 fontSize: 13,
                 height: 1.6,
@@ -1969,19 +2088,18 @@ class HomePage extends GetView<HomeController> {
               const SizedBox(height: 12),
               Obx(
                 () => _buildStatusRow(
-                  'ninja',
+                  'env_ninja_title'.tr,
                   controller.ninjaOnPath.value,
-                  description:
-                      '系统 PATH 或仓库内 python_venv\\Scripts\\ninja.exe（pip 安装）',
+                  description: 'env_ninja_desc'.tr,
                   onRetry: controller.detectBuildTools,
                 ),
               ),
               const SizedBox(height: 10),
               Obx(
                 () => _buildStatusRow(
-                  'MSVC C++（cl.exe）',
+                  'env_msvc_title'.tr,
                   controller.msvcClOnPath.value,
-                  description: 'Visual Studio Build Tools：C++ 编译器与 Windows SDK',
+                  description: 'env_msvc_desc'.tr,
                   onRetry: controller.detectBuildTools,
                 ),
               ),
@@ -2011,10 +2129,10 @@ class HomePage extends GetView<HomeController> {
                         ),
                   label: Text(
                     installing
-                        ? '安装中...'
+                        ? 'env_build_installing'.tr
                         : ready
-                        ? '已安装（ninja + MSVC）'
-                        : '安装编译工具（ninja + MSVC）',
+                        ? 'env_build_installed'.tr
+                        : 'env_build_install_btn'.tr,
                   ),
                   style: _btnStyle(
                     ready ? const Color(0xFF166534) : const Color(0xFF7C3AED),
@@ -2023,12 +2141,12 @@ class HomePage extends GetView<HomeController> {
               );
             }),
             const SizedBox(height: 12),
-            _logLabel('编译工具安装日志'),
+            _logLabel('env_build_log_label'.tr),
             const SizedBox(height: 8),
             Obx(
               () => _logBox(
                 controller.buildToolsLog.value,
-                placeholder: '点击「安装编译工具」开始安装...',
+                placeholder: 'env_build_log_placeholder'.tr,
               ),
             ),
           ],
@@ -2121,7 +2239,7 @@ class HomePage extends GetView<HomeController> {
             if (onBrowse != null) ...[
               const SizedBox(width: 8),
               Tooltip(
-                message: '浏览',
+                message: 'tooltip_browse'.tr,
                 child: Material(
                   color: const Color(0xFF3A3F47),
                   borderRadius: BorderRadius.circular(8),
