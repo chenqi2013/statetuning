@@ -5,12 +5,14 @@ import 'package:get/get.dart';
 import 'home_controller.dart';
 import 'home_page.dart';
 import 'l10n/app_locale.dart';
+import 'l10n/locale_prefs.dart';
 import 'l10n/app_translations.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final deviceLocale = WidgetsBinding.instance.platformDispatcher.locale;
-  final appLocale = resolveAppLocale(deviceLocale);
+  final savedLocale = await LocalePrefs.loadLocale();
+  final appLocale = savedLocale ?? resolveAppLocale(deviceLocale);
   runApp(MyApp(locale: appLocale));
 }
 

@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 
 import 'home_controller.dart';
 import 'l10n/app_locale.dart';
+import 'l10n/locale_prefs.dart';
 
 String _presetDisplayLabel(String label) =>
     label == kCustomPresetLabel ? 'preset_custom'.tr : label;
@@ -152,7 +153,10 @@ class HomePage extends GetView<HomeController> {
         color: Color(0xFFB0B5BC),
         size: 22,
       ),
-      onSelected: Get.updateLocale,
+      onSelected: (locale) {
+        Get.updateLocale(locale);
+        LocalePrefs.saveLocale(locale);
+      },
       itemBuilder: (context) => [
         PopupMenuItem(
           value: kAppSupportedLocales[0],
