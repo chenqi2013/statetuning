@@ -30,6 +30,16 @@ from PySide6.QtWidgets import (
 from . import i18n
 from .controller import HomeController, TrainingPrecision, kCustomPresetLabel
 
+_TAB_KEYS = (
+    "tab_model",
+    "tab_data",
+    "tab_train",
+    "tab_monitor",
+    "tab_export",
+    "tab_settings",
+    "tab_test",
+)
+
 
 def _ss() -> str:
     return """
@@ -79,6 +89,7 @@ class MainWindow(QMainWindow):
         root.setSpacing(0)
 
         self._inputs: dict[str, QLineEdit] = {}
+        self._tr_widgets: list[tuple[QWidget, str, str]] = []
 
         self._build_top_bar(root)
 
@@ -116,6 +127,40 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, e):  # noqa: N802
         super().resizeEvent(e)
         self._overlay.setGeometry(self.rect())
+
+    def _apply_tr_widget(self, w: QWidget, key: str, mode: str) -> None:
+        s = tr(key)
+        if mode == "title":
+            assert isinstance(w, QGroupBox)
+            w.setTitle(s)
+        elif mode == "placeholder":
+            if isinstance(w, QPlainTextEdit):
+                w.setPlaceholderText(s)
+            elif isinstance(w, QLineEdit):
+                w.setPlaceholderText(s)
+        elif mode == "plain":
+            assert isinstance(w, QPlainTextEdit)
+            w.setPlainText(s)
+        elif mode == "label_colon":
+            assert isinstance(w, QLabel)
+            w.setText(s + ":")
+        else:
+            assert isinstance(w, (QLabel, QPushButton))
+            w.setText(s)
+
+    def _tr_reg(self, w: QWidget, key: str, mode: str = "text") -> QWidget:
+        self._tr_widgets.append((w, key, mode))
+        self._apply_tr_widget(w, key, mode)
+        return w
+
+    def _retranslate_ui(self) -> None:
+        for item in self._tr_widgets:
+            self._apply_tr_widget(item[0], item[1], item[2])
+        for i, key in enumerate(_TAB_KEYS):
+            self.tabs.setTabText(i, tr(key))
+        if getattr(self, "_preset_buttons", None):
+            for p, btn in self._preset_buttons:
+                btn.setText(tr("preset_custom") if p.label == kCustomPresetLabel else p.label)
 
     def _boot(self) -> None:
         self._ctrl.ensure_repo_extracted()
@@ -176,7 +221,8 @@ class MainWindow(QMainWindow):
         bar.setStyleSheet("background: #252830; padding: 8px 20px;")
         h = QHBoxLayout(bar)
 
-        title = QLabel(tr("app_title"))
+        title = QLabel()
+        self._tr_reg(title, "app_title")
         title.setStyleSheet("font-size: 20px; font-weight: 600; color: white;")
         h.addWidget(title)
         h.addStretch()
@@ -200,10 +246,11 @@ class MainWindow(QMainWindow):
         h.addWidget(self.status_label)
         parent_layout.addWidget(bar)
 
-    def _on_lang(self) -> None:
+    def _on_lang(self, _idx: int | None = None) -> None:
         loc = self.lang_combo.currentData()
         if loc:
             i18n.set_locale(str(loc))
+            self._retranslate_ui()
             self._ctrl.reload_strings()
             self.refresh()
 
@@ -214,10 +261,10 @@ class MainWindow(QMainWindow):
         w.setWidget(inner)
         return w
 
-    def _line(self, label: str, attr: str, browse: str | None = None) -> QHBoxLayout:
+    def _line(self, placeholder_key: str, attr: str, browse: str | None = None) -> QHBoxLayout:
         row = QHBoxLayout()
         le = QLineEdit()
-        le.setPlaceholderText(label)
+        self._tr_reg(le, placeholder_key, "placeholder")
         self._inputs[attr] = le
 
         def sync(text: str) -> None:
@@ -247,7 +294,8 @@ class MainWindow(QMainWindow):
         v = QVBoxLayout(w)
         v.setSpacing(16)
 
-        presets = QGroupBox(tr("model_specs_preset"))
+        presets = QGroupBox()
+        self._tr_reg(presets, "model_specs_preset", "title")
         pv = QHBoxLayout(presets)
         self._preset_buttons = []
         for p in self._ctrl.presets:
@@ -259,37 +307,40 @@ class MainWindow(QMainWindow):
             btn.setCheckable(True)
             btn.setObjectName("secondary")
             btn.clicked.connect(lambda _=False, pl=p.label: self._apply_preset(pl))
-            self._preset_buttons.append((p.label, btn))
+            self._preset_buttons.append((p, btn))
             pv.addWidget(btn)
         pv.addStretch()
         v.addWidget(presets)
 
-        fp = QGroupBox(tr("model_file_path"))
+        fp = QGroupBox()
+        self._tr_reg(fp, "model_file_path", "title")
         fl = QVBoxLayout(fp)
-        fl.addWidget(QLabel(tr("label_pretrained_pth")))
-        fl.addLayout(self._line(tr("hint_model_path"), "model_path", "file_pth"))
+        fl.addWidget(self._tr_reg(QLabel(), "label_pretrained_pth"))
+        fl.addLayout(self._line("hint_model_path", "model_path", "file_pth"))
         self.detect_lbl = QLabel()
         self.detect_lbl.setStyleSheet("color: #9ca3af; font-size: 13px;")
         fl.addWidget(self.detect_lbl)
         v.addWidget(fp)
 
-        adv = QGroupBox(tr("modelargs_advanced"))
+        adv = QGroupBox()
+        self._tr_reg(adv, "modelargs_advanced", "title")
         g = QGridLayout(adv)
-        g.addWidget(QLabel(tr("label_vocab_size")), 0, 0)
+        g.addWidget(self._tr_reg(QLabel(), "label_vocab_size"), 0, 0)
         self.vocab_e = QLineEdit()
         self.vocab_e.setReadOnly(True)
         g.addWidget(self.vocab_e, 0, 1)
-        g.addWidget(QLabel(tr("label_n_embd")), 0, 2)
+        g.addWidget(self._tr_reg(QLabel(), "label_n_embd"), 0, 2)
         self.n_embd_e = QLineEdit()
         self.n_embd_e.setReadOnly(True)
         g.addWidget(self.n_embd_e, 0, 3)
-        g.addWidget(QLabel(tr("label_n_layer")), 1, 0)
+        g.addWidget(self._tr_reg(QLabel(), "label_n_layer"), 1, 0)
         self.n_layer_e = QLineEdit()
         self.n_layer_e.setReadOnly(True)
         g.addWidget(self.n_layer_e, 1, 1)
         v.addWidget(adv)
 
-        nx = QPushButton(tr("next_data_config"))
+        nx = QPushButton()
+        self._tr_reg(nx, "next_data_config")
         nx.clicked.connect(lambda: self.tabs.setCurrentIndex(1))
         v.addWidget(nx)
         v.addStretch()
@@ -297,8 +348,8 @@ class MainWindow(QMainWindow):
 
     def _apply_preset(self, label: str) -> None:
         self._ctrl.apply_preset(label)
-        for pl, btn in self._preset_buttons:
-            btn.setChecked(pl == label)
+        for p, btn in self._preset_buttons:
+            btn.setChecked(p.label == label)
         self.refresh_model_fields()
 
     def refresh_model_fields(self) -> None:
@@ -343,18 +394,21 @@ class MainWindow(QMainWindow):
     def _page_data(self) -> QWidget:
         w = QWidget()
         v = QVBoxLayout(w)
-        v.addWidget(QLabel(tr("train_repo_desc")))
+        v.addWidget(self._tr_reg(QLabel(), "train_repo_desc"))
 
-        repo = QGroupBox(tr("train_repo"))
+        repo = QGroupBox()
+        self._tr_reg(repo, "train_repo", "title")
         rl = QVBoxLayout(repo)
-        rl.addWidget(QLabel(tr("label_repo_path")))
-        rl.addLayout(self._line(tr("hint_repo_path_default"), "repo_path", "dir"))
+        rl.addWidget(self._tr_reg(QLabel(), "label_repo_path"))
+        rl.addLayout(self._line("hint_repo_path_default", "repo_path", "dir"))
         hb = QHBoxLayout()
-        chk = QPushButton(tr("btn_check_path"))
+        chk = QPushButton()
+        self._tr_reg(chk, "btn_check_path")
         chk.setObjectName("secondary")
         chk.clicked.connect(self._ctrl.check_repo)
         hb.addWidget(chk)
-        ex = QPushButton(tr("btn_extract_here"))
+        ex = QPushButton()
+        self._tr_reg(ex, "btn_extract_here")
         ex.clicked.connect(lambda: self._ctrl.extract_bundle_to(self._ctrl.repo_path or ""))
         hb.addWidget(ex)
         hb.addStretch()
@@ -362,30 +416,33 @@ class MainWindow(QMainWindow):
         self.repo_log_view = QPlainTextEdit()
         self.repo_log_view.setReadOnly(True)
         self.repo_log_view.setMaximumHeight(120)
-        self.repo_log_view.setPlaceholderText(tr("repo_log_placeholder"))
+        self._tr_reg(self.repo_log_view, "repo_log_placeholder", "placeholder")
         rl.addWidget(self.repo_log_view)
         v.addWidget(repo)
 
-        dt = QGroupBox(tr("train_data"))
+        dt = QGroupBox()
+        self._tr_reg(dt, "train_data", "title")
         dl = QVBoxLayout(dt)
-        dl.addWidget(QLabel(tr("label_jsonl_path")))
-        dl.addLayout(self._line(tr("hint_jsonl_pick"), "data_path", "file_jsonl"))
-        dl.addWidget(QLabel(tr("data_format_title")))
+        dl.addWidget(self._tr_reg(QLabel(), "label_jsonl_path"))
+        dl.addLayout(self._line("hint_jsonl_pick", "data_path", "file_jsonl"))
+        dl.addWidget(self._tr_reg(QLabel(), "data_format_title"))
         fmt = QPlainTextEdit()
         fmt.setReadOnly(True)
         fmt.setMaximumHeight(72)
-        fmt.setPlainText(tr("data_format_example_line"))
+        self._tr_reg(fmt, "data_format_example_line", "plain")
         fmt.setStyleSheet("color: #86efac; font-family: monospace;")
         dl.addWidget(fmt)
         v.addWidget(dt)
 
-        od = QGroupBox(tr("output_dir_section"))
+        od = QGroupBox()
+        self._tr_reg(od, "output_dir_section", "title")
         ol = QVBoxLayout(od)
-        ol.addWidget(QLabel(tr("label_output_dir")))
-        ol.addLayout(self._line(tr("hint_output_dir"), "output_dir", "out_dir"))
+        ol.addWidget(self._tr_reg(QLabel(), "label_output_dir"))
+        ol.addLayout(self._line("hint_output_dir", "output_dir", "out_dir"))
         v.addWidget(od)
 
-        nx = QPushButton(tr("next_train_params"))
+        nx = QPushButton()
+        self._tr_reg(nx, "next_train_params")
         nx.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
         v.addWidget(nx)
         return w
@@ -394,15 +451,17 @@ class MainWindow(QMainWindow):
         w = QWidget()
         v = QVBoxLayout(w)
 
-        hp = QGroupBox(tr("train_hyperparams"))
+        hp = QGroupBox()
+        self._tr_reg(hp, "train_hyperparams", "title")
         g = QGridLayout(hp)
-        self._add_num_row(g, 0, 0, tr("label_batch_size"), "batch_size")
-        self._add_num_row(g, 0, 2, tr("label_num_steps"), "num_steps")
-        self._add_num_row(g, 1, 0, tr("label_num_epochs"), "num_epochs")
-        self._add_text_row(g, 1, 2, tr("label_lr"), "learning_rate")
-        self._add_num_row(g, 2, 0, tr("label_ctx_len"), "ctx_len")
+        self._add_num_row(g, 0, 0, "label_batch_size", "batch_size")
+        self._add_num_row(g, 0, 2, "label_num_steps", "num_steps")
+        self._add_num_row(g, 1, 0, "label_num_epochs", "num_epochs")
+        self._add_text_row(g, 1, 2, "label_lr", "learning_rate")
+        self._add_num_row(g, 2, 0, "label_ctx_len", "ctx_len")
 
-        prec = QGroupBox(tr("label_train_precision"))
+        prec = QGroupBox()
+        self._tr_reg(prec, "label_train_precision", "title")
         ph = QHBoxLayout(prec)
         self._prec_buttons: list[tuple[TrainingPrecision, QPushButton]] = []
         for p in TrainingPrecision:
@@ -416,41 +475,48 @@ class MainWindow(QMainWindow):
         g.addWidget(prec, 3, 0, 1, 4)
         v.addWidget(hp)
 
-        sm = QGroupBox(tr("config_summary"))
+        sm = QGroupBox()
+        self._tr_reg(sm, "config_summary", "title")
         sf = QFormLayout(sm)
         self.sum_labels = {}
-        for key, lab in [
-            ("repo", tr("summary_repo")),
-            ("model", tr("summary_model_file")),
-            ("data", tr("summary_data_file")),
-            ("out", tr("summary_output_dir")),
-            ("prec", tr("summary_precision")),
-            ("spec", tr("summary_model_spec")),
-            ("embd", tr("summary_embd_layer")),
-            ("ctx", tr("summary_ctx_len")),
-            ("bse", tr("summary_batch_steps_epochs")),
-            ("lr", tr("summary_lr")),
+        for key, lab_key in [
+            ("repo", "summary_repo"),
+            ("model", "summary_model_file"),
+            ("data", "summary_data_file"),
+            ("out", "summary_output_dir"),
+            ("prec", "summary_precision"),
+            ("spec", "summary_model_spec"),
+            ("embd", "summary_embd_layer"),
+            ("ctx", "summary_ctx_len"),
+            ("bse", "summary_batch_steps_epochs"),
+            ("lr", "summary_lr"),
         ]:
+            lw = QLabel()
+            self._tr_reg(lw, lab_key, "label_colon")
             lb = QLabel("")
-            sf.addRow(lab + ":", lb)
+            sf.addRow(lw, lb)
             self.sum_labels[key] = lb
         v.addWidget(sm)
 
         row = QHBoxLayout()
-        self.train_btn = QPushButton(tr("train_start"))
+        self.train_btn = QPushButton()
+        self._tr_reg(self.train_btn, "train_start")
         self.train_btn.setObjectName("green")
         self.train_btn.clicked.connect(self._ctrl.start_training)
-        self.stop_btn = QPushButton(tr("train_btn_stop"))
+        self.stop_btn = QPushButton()
+        self._tr_reg(self.stop_btn, "train_btn_stop")
         self.stop_btn.setObjectName("red")
         self.stop_btn.clicked.connect(self._ctrl.stop_training)
         row.addWidget(self.train_btn, 3)
         row.addWidget(self.stop_btn, 1)
         v.addLayout(row)
-        v.addWidget(QLabel(tr("train_hint_footer")))
+        v.addWidget(self._tr_reg(QLabel(), "train_hint_footer"))
         return w
 
-    def _add_num_row(self, g: QGridLayout, r: int, c: int, title: str, attr: str) -> None:
-        g.addWidget(QLabel(title), r, c)
+    def _add_num_row(self, g: QGridLayout, r: int, c: int, title_key: str, attr: str) -> None:
+        lw = QLabel()
+        self._tr_reg(lw, title_key)
+        g.addWidget(lw, r, c)
         le = QLineEdit()
         self._inputs[attr] = le
         le.textChanged.connect(
@@ -458,8 +524,10 @@ class MainWindow(QMainWindow):
         )
         g.addWidget(le, r, c + 1)
 
-    def _add_text_row(self, g: QGridLayout, r: int, c: int, title: str, attr: str) -> None:
-        g.addWidget(QLabel(title), r, c)
+    def _add_text_row(self, g: QGridLayout, r: int, c: int, title_key: str, attr: str) -> None:
+        lw = QLabel()
+        self._tr_reg(lw, title_key)
+        g.addWidget(lw, r, c)
         le = QLineEdit()
         self._inputs[attr] = le
         le.textChanged.connect(lambda t, a=attr: setattr(self._ctrl, a, t))
@@ -485,24 +553,28 @@ class MainWindow(QMainWindow):
         self.mon_badge = QLabel()
         hb.addWidget(self.mon_badge)
         hb.addStretch()
-        self.mon_stop_btn = QPushButton(tr("train_btn_stop"))
+        self.mon_stop_btn = QPushButton()
+        self._tr_reg(self.mon_stop_btn, "train_btn_stop")
         self.mon_stop_btn.setObjectName("red")
         self.mon_stop_btn.clicked.connect(self._ctrl.stop_training)
         hb.addWidget(self.mon_stop_btn)
-        self.mon_export_btn = QPushButton(tr("monitor_export_loss_jsonl"))
+        self.mon_export_btn = QPushButton()
+        self._tr_reg(self.mon_export_btn, "monitor_export_loss_jsonl")
         self.mon_export_btn.clicked.connect(self._export_loss)
         hb.addWidget(self.mon_export_btn)
-        self.mon_chart_btn = QPushButton(tr("monitor_view_loss_chart"))
+        self.mon_chart_btn = QPushButton()
+        self._tr_reg(self.mon_chart_btn, "monitor_view_loss_chart")
         self.mon_chart_btn.clicked.connect(self._loss_chart)
         hb.addWidget(self.mon_chart_btn)
-        cl = QPushButton(tr("monitor_clear_log"))
+        cl = QPushButton()
+        self._tr_reg(cl, "monitor_clear_log")
         cl.setObjectName("secondary")
         cl.clicked.connect(self._clear_train_log)
         hb.addWidget(cl)
         v.addLayout(hb)
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
-        self.log_view.setPlaceholderText(tr("monitor_log_placeholder"))
+        self._tr_reg(self.log_view, "monitor_log_placeholder", "placeholder")
         self.log_view.setFont(QFont("Menlo", 11) if sys.platform == "darwin" else QFont("Consolas", 10))
         v.addWidget(self.log_view, 1)
         return w
@@ -552,10 +624,12 @@ class MainWindow(QMainWindow):
         v.addWidget(self.exp_dir_lbl)
 
         hb = QHBoxLayout()
-        rf = QPushButton(tr("export_refresh_list"))
+        rf = QPushButton()
+        self._tr_reg(rf, "export_refresh_list")
         rf.clicked.connect(self._ctrl.refresh_output_files)
         hb.addWidget(rf)
-        self.exp_export_btn = QPushButton(tr("monitor_export_loss_jsonl"))
+        self.exp_export_btn = QPushButton()
+        self._tr_reg(self.exp_export_btn, "monitor_export_loss_jsonl")
         self.exp_export_btn.clicked.connect(self._export_loss)
         hb.addWidget(self.exp_export_btn)
         hb.addStretch()
@@ -563,23 +637,25 @@ class MainWindow(QMainWindow):
 
         self.file_list = QPlainTextEdit()
         self.file_list.setReadOnly(True)
-        self.file_list.setPlaceholderText(tr("export_no_files_hint") if hasattr(i18n, "tr") else "No output files yet.")
+        self._tr_reg(self.file_list, "export_no_files_hint", "placeholder")
         self.file_list.setFont(QFont("Menlo", 10) if sys.platform == "darwin" else QFont("Consolas", 9))
         v.addWidget(self.file_list, 1)
 
-        usage_box = QGroupBox(tr("export_usage_title"))
+        usage_box = QGroupBox()
+        self._tr_reg(usage_box, "export_usage_title", "title")
         ul = QVBoxLayout(usage_box)
-        ul.addWidget(QLabel(tr("export_usage_body")))
+        ul.addWidget(self._tr_reg(QLabel(), "export_usage_body"))
         v.addWidget(usage_box)
         return w
 
     def _page_settings(self) -> QWidget:
         w = QWidget()
         v = QVBoxLayout(w)
-        v.addWidget(QLabel(tr("settings_system_intro")))
+        v.addWidget(self._tr_reg(QLabel(), "settings_system_intro"))
 
         # ── System Basics ─────────────────────────────────────────────────────
-        sb = QGroupBox(tr("settings_system_basics"))
+        sb = QGroupBox()
+        self._tr_reg(sb, "settings_system_basics", "title")
         sg = QVBoxLayout(sb)
 
         # winget row
@@ -593,7 +669,8 @@ class MainWindow(QMainWindow):
         uh = QHBoxLayout()
         self.uv_lbl = QLabel()
         uh.addWidget(self.uv_lbl, 1)
-        self.uv_install_btn = QPushButton(tr("btn_install"))
+        self.uv_install_btn = QPushButton()
+        self._tr_reg(self.uv_install_btn, "btn_install")
         self.uv_install_btn.setObjectName("secondary")
         self.uv_install_btn.clicked.connect(self._ctrl.install_uv)
         uh.addWidget(self.uv_install_btn)
@@ -603,7 +680,8 @@ class MainWindow(QMainWindow):
         nh = QHBoxLayout()
         self.nvidia_lbl = QLabel()
         nh.addWidget(self.nvidia_lbl, 1)
-        self.nvidia_install_btn = QPushButton(tr("btn_install"))
+        self.nvidia_install_btn = QPushButton()
+        self._tr_reg(self.nvidia_install_btn, "btn_install")
         self.nvidia_install_btn.setObjectName("secondary")
         self.nvidia_install_btn.clicked.connect(self._ctrl.install_nvidia_driver)
         nh.addWidget(self.nvidia_install_btn)
@@ -616,18 +694,21 @@ class MainWindow(QMainWindow):
         v.addWidget(sb)
 
         # ── CUDA ──────────────────────────────────────────────────────────────
-        cg = QGroupBox(tr("cuda_section_title"))
+        cg = QGroupBox()
+        self._tr_reg(cg, "cuda_section_title", "title")
         cl = QVBoxLayout(cg)
         self._cuda_home_le = QLineEdit(self._ctrl.cuda_home)
-        self._cuda_home_le.setPlaceholderText(tr("cuda_dir_label"))
         self._cuda_home_le.textChanged.connect(lambda t: setattr(self._ctrl, "cuda_home", t))
-        cl.addWidget(QLabel(tr("cuda_dir_label")))
+        self._tr_reg(self._cuda_home_le, "cuda_dir_label", "placeholder")
+        cl.addWidget(self._tr_reg(QLabel(), "cuda_dir_label"))
         cl.addWidget(self._cuda_home_le)
         brow = QHBoxLayout()
-        ad = QPushButton(tr("btn_auto_detect"))
+        ad = QPushButton()
+        self._tr_reg(ad, "btn_auto_detect")
         ad.clicked.connect(self._ctrl.detect_cuda_home)
         brow.addWidget(ad)
-        self.cuda_install_btn = QPushButton(tr("btn_install_cuda"))
+        self.cuda_install_btn = QPushButton()
+        self._tr_reg(self.cuda_install_btn, "btn_install_cuda")
         self.cuda_install_btn.setObjectName("secondary")
         self.cuda_install_btn.clicked.connect(self._ctrl.install_cuda_winget)
         brow.addWidget(self.cuda_install_btn)
@@ -640,13 +721,16 @@ class MainWindow(QMainWindow):
         v.addWidget(cg)
 
         # ── Environment ───────────────────────────────────────────────────────
-        eg = QGroupBox(tr("env_section_title"))
+        eg = QGroupBox()
+        self._tr_reg(eg, "env_section_title", "title")
         el = QVBoxLayout(eg)
         ebrow = QHBoxLayout()
-        chk = QPushButton(tr("env_check_env"))
+        chk = QPushButton()
+        self._tr_reg(chk, "env_check_env")
         chk.clicked.connect(self._ctrl.check_environment)
         ebrow.addWidget(chk)
-        self.env_install_btn = QPushButton(tr("btn_install_env"))
+        self.env_install_btn = QPushButton()
+        self._tr_reg(self.env_install_btn, "btn_install_env")
         self.env_install_btn.clicked.connect(self._ctrl.install_environment)
         ebrow.addWidget(self.env_install_btn)
         ebrow.addStretch()
@@ -657,7 +741,8 @@ class MainWindow(QMainWindow):
         v.addWidget(eg)
 
         # ── Build Tools (Windows only) ────────────────────────────────────────
-        btg = QGroupBox(tr("build_tools_section"))
+        btg = QGroupBox()
+        self._tr_reg(btg, "build_tools_section", "title")
         btl = QVBoxLayout(btg)
         bth = QHBoxLayout()
         self.ninja_lbl = QLabel()
@@ -665,7 +750,8 @@ class MainWindow(QMainWindow):
         bth.addWidget(self.ninja_lbl)
         bth.addWidget(self.msvc_lbl)
         bth.addStretch()
-        self.bt_install_btn = QPushButton(tr("btn_install_build_tools"))
+        self.bt_install_btn = QPushButton()
+        self._tr_reg(self.bt_install_btn, "btn_install_build_tools")
         self.bt_install_btn.setObjectName("secondary")
         self.bt_install_btn.clicked.connect(self._ctrl.install_build_tools)
         bth.addWidget(self.bt_install_btn)

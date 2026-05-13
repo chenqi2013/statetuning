@@ -17,6 +17,8 @@ def main() -> None:
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv)
+    app.setOrganizationName("StateTuning")
+    app.setApplicationName("pyside_desktop")
     i18n.load_messages()
     saved = i18n.load_saved_locale()
     i18n.set_locale(saved or i18n.resolve_locale_from_system(QLocale.system()))

@@ -7,9 +7,9 @@ import os
 import platform
 import re
 import shutil
+import tempfile
 import subprocess
 import sys
-import tempfile
 import threading
 import zipfile
 from dataclasses import dataclass
@@ -257,30 +257,70 @@ class HomeController(QObject):
         self._emit()
 
     # --- GPU ---
-    def _detect_gpu(self) -> None:
+    def _python_cmds_for_runtime(self) -> list[list[str]]:
+        cmds: list[list[str]] = []
         vpy = self._venv_python_path()
-        py = str(vpy) if vpy else "python3"
+        if vpy:
+            cmds.append([str(vpy)])
+        # Match Flutter behavior on Windows first; py launcher is common too.
+        if is_windows():
+            cmds.extend([["python"], ["py", "-3"], ["python3"]])
+        else:
+            cmds.extend([["python3"], ["python"]])
+        return cmds
+
+    def _detect_gpu(self) -> None:
+        saw_no_cuda = False
+        py_script = (
+            "import torch; "
+            "print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No CUDA GPU')"
+        )
+        for base_cmd in self._python_cmds_for_runtime():
+            try:
+                r = subprocess.run(
+                    [*base_cmd, "-c", py_script],
+                    cwd=self.repo_path or None,
+                    env=self._env_with_torch_runtime(),
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                    shell=is_windows(),
+                )
+                if r.returncode != 0:
+                    continue
+                out = (r.stdout or "").strip()
+                if not out:
+                    continue
+                if out == "No CUDA GPU":
+                    saw_no_cuda = True
+                    continue
+                self.gpu_info = out
+                return
+            except Exception:
+                continue
+
+        # Fallback: detect hardware name even when torch/venv is not ready.
         try:
-            r = subprocess.run(
-                [
-                    py,
-                    "-c",
-                    "import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No CUDA GPU')",
-                ],
-                cwd=self.repo_path or None,
-                env=self._env_with_torch_runtime(),
+            q = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=10,
+                shell=is_windows(),
             )
-            if r.returncode == 0:
-                out = (r.stdout or "").strip()
-                self.gpu_info = out or tr("gpu_none")
-            else:
-                self.gpu_info = tr("gpu_not_found")
+            if q.returncode == 0:
+                lines = [x.strip() for x in (q.stdout or "").splitlines() if x.strip()]
+                if lines:
+                    self.gpu_info = lines[0]
+                    return
         except Exception:
-            self.gpu_info = tr("gpu_not_found")
-        self._emit()
+            pass
+
+        self.gpu_info = tr("gpu_none") if saw_no_cuda else tr("gpu_not_found")
+
+    def detect_gpu(self) -> None:
+        """Trigger GPU detection in background for homepage status."""
+        _run_bg(self._detect_gpu)
 
     # --- CUDA ---
     def _set_cuda_home(self, path: str) -> None:
@@ -728,11 +768,13 @@ class HomeController(QObject):
         py = str(vpy) if vpy else ("python" if is_windows() else "python3")
         try:
             train_text = train_py.read_text(encoding="utf-8")
+            supports_cli_args = "--load_model" in train_text and "--data_path" in train_text
             supports_num_steps = "--num_steps" in train_text
         except OSError:
+            supports_cli_args = False
             supports_num_steps = False
 
-        full_args = [
+        full_args: list[str] = [
             "-u",
             "-X",
             "utf8",
@@ -760,8 +802,13 @@ class HomeController(QObject):
             "--ctx_len",
             str(self.ctx_len),
         ]
-        if supports_num_steps:
+        if supports_cli_args and supports_num_steps:
             full_args.extend(["--num_steps", str(self.num_steps)])
+        if not supports_cli_args:
+            compat_script = self._build_legacy_train_script(train_text)
+            compat_path = Path(self.repo_path) / "_pyside_train_compat.py"
+            compat_path.write_text(compat_script, encoding="utf-8")
+            full_args = ["-u", "-X", "utf8", str(compat_path)]
 
         env = self._env_with_torch_runtime()
         env["VSLANG"] = "1033"
@@ -837,6 +884,44 @@ class HomeController(QObject):
             self._proc.start(py, full_args)
 
         self._log_flush_timer.start()
+
+    def _build_legacy_train_script(self, src: str) -> str:
+        """Patch old train.py templates that hardcode TrainArgs paths."""
+        updated = src
+
+        def repl_assign(name: str, value: str) -> None:
+            nonlocal updated
+            pat = re.compile(rf"^(\s*{re.escape(name)}\s*=\s*).*$", re.MULTILINE)
+            updated = pat.sub(rf"\g<1>{value}", updated, count=1)
+
+        repl_assign("vocab_size", str(self.vocab_size))
+        repl_assign("n_embd", str(self.n_embd))
+        repl_assign("n_layer", str(self.n_layer))
+        repl_assign("ctx_len", str(self.ctx_len))
+        repl_assign("load_model", repr(self.model_path))
+        repl_assign("data_path", repr(self.data_path))
+        repl_assign("output_dir", repr(self.output_dir))
+        repl_assign("precision", repr(self.precision_string))
+        repl_assign("batch_size", str(self.batch_size))
+        repl_assign("num_steps", str(self.num_steps))
+        repl_assign("num_epochs", str(self.num_epochs))
+        try:
+            lr = str(float(self.learning_rate))
+        except ValueError:
+            lr = "1e-5"
+        repl_assign("learning_rate", lr)
+
+        # Keep env precision aligned too (legacy files set it near top-level env vars).
+        pat_float_mode = re.compile(
+            r'^(\s*os\.environ\["RWKV_FLOAT_MODE"\]\s*=\s*).*$',
+            re.MULTILINE,
+        )
+        updated = pat_float_mode.sub(
+            rf'\g<1>{repr(self.precision_string)}',
+            updated,
+            count=1,
+        )
+        return updated
 
     def _find_vcvarsall(self) -> Optional[str]:
         if not is_windows():
@@ -965,15 +1050,21 @@ class HomeController(QObject):
                 return
             except Exception:
                 pass
-        try:
-            r = subprocess.run(
-                ["python3", "--version"],
-                capture_output=True,
-                timeout=10,
-            )
-            self.python_installed = r.returncode == 0
-        except Exception:
-            self.python_installed = False
+        self.python_installed = False
+        check_cmds = [["python", "--version"], ["py", "-3", "--version"], ["python3", "--version"]]
+        for cmd in check_cmds:
+            try:
+                r = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    timeout=10,
+                    shell=is_windows(),
+                )
+                if r.returncode == 0:
+                    self.python_installed = True
+                    break
+            except Exception:
+                continue
         self._emit()
 
     def detect_build_tools(self) -> None:
@@ -1090,9 +1181,12 @@ class HomeController(QObject):
             self._toast(tr("snackbar_env_check"), tr("snackbar_env_ready"))
         else:
             self.check_log += tr("log_env_missing_reinstall", list=",".join(missing))
+            self._detect_gpu()
 
         self.is_checking = False
         self.detect_build_tools()
+        self._emit()
+        self.detect_gpu()
         self._emit()
 
     # --- one-click install flows (mirrors Flutter's winget / uv logic) ---

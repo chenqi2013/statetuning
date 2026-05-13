@@ -9,12 +9,30 @@ from PySide6.QtCore import QLocale, QSettings
 
 LOCALES = ("en_US", "zh_CN", "zh_TW")
 _FALLBACK = "en_US"
+_SETTINGS_ORG = "StateTuning"
+_SETTINGS_APP = "pyside_desktop"
 
 _MESSAGES: dict[str, dict[str, str]] | None = None
 
 
+def _coerce_settings_str(value: object, default: str = "") -> str:
+    """QSettings may return QString-backed types; normalize for locale reads."""
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
 def _bundle_root() -> Path:
     return Path(__file__).resolve().parent
+
+
+def _settings() -> QSettings:
+    # Explicit app identity avoids QSettings AccessError in python -m runs.
+    return QSettings(_SETTINGS_ORG, _SETTINGS_APP)
 
 
 def load_messages() -> None:
@@ -46,21 +64,23 @@ def resolve_locale_from_system(ql: QLocale | None) -> str:
 
 
 def load_saved_locale() -> str | None:
-    s = QSettings()
-    v = s.value("ui/locale", "")
-    if not v or not isinstance(v, str):
+    s = _settings()
+    v = _coerce_settings_str(s.value("ui/locale", ""))
+    if not v.strip():
         return None
     return v if v in LOCALES else None
 
 
 def save_locale(locale_id: str) -> None:
-    QSettings().setValue("ui/locale", locale_id)
+    s = _settings()
+    s.setValue("ui/locale", locale_id)
+    s.sync()
 
 
 def current_locale() -> str:
-    s = QSettings()
-    v = s.value("ui/locale", "")
-    if isinstance(v, str) and v in LOCALES:
+    s = _settings()
+    v = _coerce_settings_str(s.value("ui/locale", ""))
+    if v in LOCALES:
         return v
     return resolve_locale_from_system(QLocale.system())
 
