@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QModelIndex, Qt, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -22,6 +23,9 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -52,6 +56,11 @@ def _ss() -> str:
       background: #1a1d21; border: 1px solid #3a3f47; border-radius: 8px;
       padding: 8px 12px; selection-background-color: #3b82f6;
     }
+    QComboBox QAbstractItemView {
+      background: #1a1d21; color: #e5e7eb; outline: 0;
+      border: 1px solid #3a3f47; padding: 4px;
+      selection-background-color: #3b82f6; selection-color: #ffffff;
+    }
     QPushButton {
       background: #3b82f6; color: white; border: none; border-radius: 10px;
       padding: 10px 16px;
@@ -66,7 +75,9 @@ def _ss() -> str:
     }
     QPushButton#green { background: #22c55e; }
     QPushButton#red { background: #ef4444; }
-    QTabWidget::pane { border: 1px solid #3a3f47; border-radius: 8px; top: -1px; }
+    QTabWidget::pane { border: 1px solid #3a3f47; border-radius: 8px; top: -1px; background: #1a1d21; }
+    QTabWidget::tab-bar { background: #1a1d21; }
+    QTabBar { background: #1a1d21; }
     QTabBar::tab { background: #252830; padding: 12px 22px; margin-right: 2px; }
     QTabBar::tab:selected { border-bottom: 2px solid #3b82f6; color: #fff; font-weight: 600; }
     QTabBar::tab:!selected { color: #6b7280; }
@@ -75,6 +86,46 @@ def _ss() -> str:
 
 def tr(k: str, **p: str) -> str:
     return i18n.tr(k, **p)
+
+
+class _NoElideDelegate(QStyledItemDelegate):
+    """Combo popup items still elide via QStyleOptionViewItem unless we override this."""
+
+    def initStyleOption(self, option: QStyleOptionViewItem, index: QModelIndex) -> None:  # noqa: N802
+        super().initStyleOption(option, index)
+        option.textElideMode = Qt.TextElideMode.ElideNone
+
+
+class _WidePopupComboBox(QComboBox):
+    """Widen the popup and disable middle ellipsis on macOS/Fusion combo lists."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        v = self.view()
+        v.setTextElideMode(Qt.TextElideMode.ElideNone)
+        v.setItemDelegate(_NoElideDelegate(v))
+
+    def _popup_min_width(self) -> int:
+        view = self.view()
+        if self.count() <= 0:
+            return self.width()
+        fm = view.fontMetrics()
+        tw = max(fm.boundingRect(self.itemText(i)).width() for i in range(self.count()))
+        style = QApplication.style()
+        sb = 0
+        if style is not None:
+            sb = style.pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None, self)
+        # List padding (stylesheet) + item margins + scrollbar when shown
+        return max(self.width(), tw + sb + 52)
+
+    def showPopup(self) -> None:  # noqa: N802
+        view = self.view()
+        view.setTextElideMode(Qt.TextElideMode.ElideNone)
+        mw = self._popup_min_width()
+        view.setMinimumWidth(mw)
+        super().showPopup()
+        # Popup layout sometimes applies combobox width after show; re-apply next tick.
+        QTimer.singleShot(0, lambda v=view, w=mw: (v.setMinimumWidth(w), v.updateGeometry()))
 
 
 class MainWindow(QMainWindow):
@@ -100,7 +151,9 @@ class MainWindow(QMainWindow):
         self._build_top_bar(root)
 
         self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
+        # Document mode uses native macOS tab chrome; disable for a single dark tab strip.
+        self.tabs.setDocumentMode(False)
+        self.tabs.tabBar().setDrawBase(False)
         root.addWidget(self.tabs, 1)
 
         self._tab_model = self._wrap_scroll(self._page_model())
@@ -233,10 +286,11 @@ class MainWindow(QMainWindow):
         h.addWidget(title)
         h.addStretch()
 
-        self.lang_combo = QComboBox()
+        self.lang_combo = _WidePopupComboBox()
         self.lang_combo.addItem("English", "en_US")
         self.lang_combo.addItem("简体中文", "zh_CN")
         self.lang_combo.addItem("繁體中文", "zh_TW")
+        self.lang_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         cur = i18n.current_locale()
         idx = max(0, self.lang_combo.findData(cur))
         self.lang_combo.setCurrentIndex(idx)

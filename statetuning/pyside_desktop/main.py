@@ -36,6 +36,9 @@ def main() -> None:
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv)
+    # macOS native style ignores much of QSS and leaves awkward grey chrome on tab bars;
+    # Fusion paints widgets consistently so our dark theme applies everywhere.
+    app.setStyle("Fusion")
     app.setOrganizationName("StateTuning")
     app.setApplicationName("pyside_desktop")
     i18n.load_messages()
