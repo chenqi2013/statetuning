@@ -147,6 +147,11 @@ class MainWindow(QMainWindow):
 
         self._inputs: dict[str, QLineEdit] = {}
         self._tr_widgets: list[tuple[QWidget, str, str]] = []
+        self._model_loading_dialog: QDialog | None = None
+        self._model_loading_spinner: QLabel | None = None
+        self._model_loading_label: QLabel | None = None
+        self._model_loading_spinner_timer: QTimer | None = None
+        self._model_loading_spinner_index = 0
 
         self._build_top_bar(root)
 
@@ -419,6 +424,56 @@ class MainWindow(QMainWindow):
         self.n_embd_e.setText(str(c.n_embd))
         self.n_layer_e.setText(str(c.n_layer))
         self.detect_lbl.setText("Loading..." if c.is_detecting_model else "")
+        self._sync_model_loading_dialog(c.is_detecting_model)
+
+    def _sync_model_loading_dialog(self, is_loading: bool) -> None:
+        if not is_loading:
+            if self._model_loading_dialog is not None:
+                self._model_loading_dialog.close()
+                self._model_loading_dialog = None
+                self._model_loading_spinner = None
+                self._model_loading_label = None
+            if self._model_loading_spinner_timer is not None:
+                self._model_loading_spinner_timer.stop()
+                self._model_loading_spinner_timer = None
+            return
+
+        text = tr("reading_model_dims")
+        if self._model_loading_dialog is None:
+            dlg = QDialog(self)
+            dlg.setWindowTitle(tr("reading_model_dims"))
+            dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
+            dlg.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint)
+            dlg.setFixedSize(320, 140)
+            lay = QVBoxLayout(dlg)
+            spinner = QLabel("◐")
+            spinner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            spinner.setStyleSheet("font-size: 28px; color: #60a5fa;")
+            lay.addWidget(spinner)
+            lab = QLabel(text)
+            lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lab.setStyleSheet("font-size: 15px; color: #e5e7eb;")
+            lay.addWidget(lab)
+            self._model_loading_dialog = dlg
+            self._model_loading_spinner = spinner
+            self._model_loading_label = lab
+            self._model_loading_spinner_timer = QTimer(self)
+            self._model_loading_spinner_timer.setInterval(120)
+            self._model_loading_spinner_timer.timeout.connect(self._tick_model_loading_spinner)
+            self._model_loading_spinner_timer.start()
+            dlg.show()
+            return
+
+        self._model_loading_dialog.setWindowTitle(tr("reading_model_dims"))
+        if self._model_loading_label is not None:
+            self._model_loading_label.setText(text)
+
+    def _tick_model_loading_spinner(self) -> None:
+        if self._model_loading_spinner is None:
+            return
+        frames = ("◐", "◓", "◑", "◒")
+        self._model_loading_spinner_index = (self._model_loading_spinner_index + 1) % len(frames)
+        self._model_loading_spinner.setText(frames[self._model_loading_spinner_index])
 
     def _pick_pth(self) -> None:
         p, _ = QFileDialog.getOpenFileName(self, tr("dialog_pick_model_pth"), "", "*.pth;;All (*)")
@@ -657,37 +712,48 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, tr("tip"), "QtCharts not available.")
             return
 
-        losses = self._ctrl.loss_history
         dlg = QDialog(self)
         dlg.setWindowTitle(tr("monitor_loss_curve_title"))
         dlg.resize(720, 460)
         lay = QVBoxLayout(dlg)
         series = QLineSeries()
-        step = max(1, len(losses) // 400)
-        for i in range(0, len(losses), step):
-            series.append(i, losses[i])
         chart = QChart()
         chart.addSeries(series)
         axis_x = QValueAxis()
         axis_x.setTitleText("steps")
         axis_x.setLabelFormat("%d")
-        axis_x.setRange(0, max(1, len(losses) - 1))
-
-        min_loss = min(losses) if losses else 0.0
-        max_loss = max(losses) if losses else 1.0
-        if min_loss == max_loss:
-            min_loss = max(0.0, min_loss - 1.0)
-            max_loss += 1.0
         axis_y = QValueAxis()
         axis_y.setTitleText("loss")
         axis_y.setLabelFormat("%.4f")
-        axis_y.setRange(min_loss, max_loss)
 
         chart.addAxis(axis_x, Qt.AlignBottom)
         chart.addAxis(axis_y, Qt.AlignLeft)
         series.attachAxis(axis_x)
         series.attachAxis(axis_y)
         chart.legend().hide()
+
+        def refresh_chart() -> None:
+            losses = self._ctrl.loss_history
+            series.clear()
+            step = max(1, len(losses) // 400)
+            for i in range(0, len(losses), step):
+                series.append(i, losses[i])
+
+            axis_x.setRange(0, max(1, len(losses) - 1))
+            min_loss = min(losses) if losses else 0.0
+            max_loss = max(losses) if losses else 1.0
+            if min_loss == max_loss:
+                min_loss = max(0.0, min_loss - 1.0)
+                max_loss += 1.0
+            axis_y.setRange(min_loss, max_loss)
+
+        refresh_chart()
+        refresh_timer = QTimer(dlg)
+        refresh_timer.setInterval(1000)
+        refresh_timer.timeout.connect(refresh_chart)
+        refresh_timer.start()
+        dlg.finished.connect(refresh_timer.stop)
+
         v = QChartView(chart)
         lay.addWidget(v)
         bb = QDialogButtonBox(QDialogButtonBox.Close)
