@@ -1053,9 +1053,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "nvidia_lbl"):
             ok = "✓" if c.nvidia_driver_installed else "✗"
             self.nvidia_lbl.setText(f"NVIDIA Driver  {ok}")
+            self.nvidia_install_btn.setVisible(not c.nvidia_driver_installed)
         if hasattr(self, "sys_log"):
             self.sys_log.setPlainText(c.uv_install_log)
         if hasattr(self, "cuda_install_btn"):
+            self.cuda_install_btn.setVisible(not c.cuda_installed)
             self.cuda_install_btn.setEnabled(not c.is_cuda_installing)
 
         # ── Build tools ───────────────────────────────────────────────────────
@@ -1066,12 +1068,14 @@ class MainWindow(QMainWindow):
         if hasattr(self, "build_tools_log_view"):
             self.build_tools_log_view.setPlainText(c.build_tools_log)
         if hasattr(self, "bt_install_btn"):
+            self.bt_install_btn.setVisible(not c.build_tools_fully_ready)
             self.bt_install_btn.setEnabled(not c.is_build_tools_installing)
 
         # ── Env log ───────────────────────────────────────────────────────────
         if hasattr(self, "env_log"):
             self.env_log.setPlainText((c.check_log + "\n" + c.install_log).strip())
         if hasattr(self, "env_install_btn"):
+            self.env_install_btn.setVisible(not c.env_ready)
             self.env_install_btn.setEnabled(not c.is_installing and not c.is_checking)
 
         # ── Export ────────────────────────────────────────────────────────────
