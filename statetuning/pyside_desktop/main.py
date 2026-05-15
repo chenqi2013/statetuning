@@ -3,16 +3,35 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
+from pathlib import Path
 
-from PySide6.QtCore import QLocale, Qt
-from PySide6.QtWidgets import QApplication
+def _install_pyside6() -> None:
+    requirements = Path(__file__).with_name("requirements.txt")
+    cmd = [sys.executable, "-m", "pip", "install", "-r", str(requirements)]
+    print("PySide6 is not installed. Installing pyside_desktop requirements...")
+    subprocess.check_call(cmd)
 
-from . import i18n
-from .main_window import MainWindow
+
+def _import_pyside6():
+    try:
+        from PySide6.QtCore import QLocale, Qt
+        from PySide6.QtWidgets import QApplication
+    except ModuleNotFoundError as exc:
+        if exc.name != "PySide6":
+            raise
+        _install_pyside6()
+        from PySide6.QtCore import QLocale, Qt
+        from PySide6.QtWidgets import QApplication
+    return QApplication, QLocale, Qt
 
 
 def main() -> None:
+    QApplication, QLocale, Qt = _import_pyside6()
+    from . import i18n
+    from .main_window import MainWindow
+
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
