@@ -414,10 +414,6 @@ class MainWindow(QMainWindow):
         chk.setObjectName("secondary")
         chk.clicked.connect(self._ctrl.check_repo)
         hb.addWidget(chk)
-        ex = QPushButton()
-        self._tr_reg(ex, "btn_extract_here")
-        ex.clicked.connect(lambda: self._ctrl.extract_bundle_to(self._ctrl.repo_path or ""))
-        hb.addWidget(ex)
         hb.addStretch()
         rl.addLayout(hb)
         self.repo_log_view = QPlainTextEdit()
@@ -932,7 +928,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, "uv_lbl"):
             ok = "✓" if c.uv_installed else "✗"
             self.uv_lbl.setText(f"uv  {ok}")
-            self.uv_install_btn.setEnabled(not c.uv_installed and not c.is_uv_installing)
+            self.uv_install_btn.setVisible(not c.uv_installed)
+            self.uv_install_btn.setEnabled(not c.is_uv_installing)
         if hasattr(self, "nvidia_lbl"):
             ok = "✓" if c.nvidia_driver_installed else "✗"
             self.nvidia_lbl.setText(f"NVIDIA Driver  {ok}")
