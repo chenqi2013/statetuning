@@ -5,6 +5,7 @@ import os
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from torch.utils.checkpoint import checkpoint as torch_checkpoint
 from .block import Block
 
 class RWKV7(nn.Module):
@@ -45,13 +46,12 @@ class RWKV7(nn.Module):
     def forward(self, input_ids):
         args = self.args
         B, T = input_ids.size()
-        assert T <= args.ctx_len, "Cannot forward, model ctx_len is exhausted."
 
         x = self.emb(input_ids)
         v_first = torch.empty_like(x)
 
         for block in self.blocks:
-            x, v_first = block(x, v_first)
+            x, v_first = torch_checkpoint(block, x, v_first, use_reentrant=False)
 
         x = self.ln_out(x)
         x = self.head(x)

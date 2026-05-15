@@ -58,6 +58,11 @@ def _ss() -> str:
     QPushButton:hover { background: #2563eb; }
     QPushButton:disabled { background: #3b82f660; color: #ffffff80; }
     QPushButton#secondary { background: #3a3f47; }
+    QPushButton#secondary:checked {
+      background: #2563eb;
+      border: 1px solid #60a5fa;
+      color: #ffffff;
+    }
     QPushButton#green { background: #22c55e; }
     QPushButton#red { background: #ef4444; }
     QTabWidget::pane { border: 1px solid #3a3f47; border-radius: 8px; top: -1px; }
@@ -310,7 +315,8 @@ class MainWindow(QMainWindow):
             self._preset_buttons.append((p, btn))
             pv.addWidget(btn)
         pv.addStretch()
-        v.addWidget(presets)
+        # Hide preset section on model tab as requested.
+        presets.setVisible(False)
 
         fp = QGroupBox()
         self._tr_reg(fp, "model_file_path", "title")
@@ -357,7 +363,7 @@ class MainWindow(QMainWindow):
         self.vocab_e.setText(str(c.vocab_size))
         self.n_embd_e.setText(str(c.n_embd))
         self.n_layer_e.setText(str(c.n_layer))
-        self.detect_lbl.setText(tr("reading_model_dims") if c.is_detecting_model else "")
+        self.detect_lbl.setText("Loading..." if c.is_detecting_model else "")
 
     def _pick_pth(self) -> None:
         p, _ = QFileDialog.getOpenFileName(self, tr("dialog_pick_model_pth"), "", "*.pth;;All (*)")
@@ -468,6 +474,7 @@ class MainWindow(QMainWindow):
             b = QPushButton(p.value.upper())
             b.setObjectName("secondary")
             b.setCheckable(True)
+            b.setAutoExclusive(True)
             b.clicked.connect(lambda _=False, x=p: self._set_prec(x))
             self._prec_buttons.append((p, b))
             ph.addWidget(b)
@@ -502,13 +509,9 @@ class MainWindow(QMainWindow):
         self.train_btn = QPushButton()
         self._tr_reg(self.train_btn, "train_start")
         self.train_btn.setObjectName("green")
-        self.train_btn.clicked.connect(self._ctrl.start_training)
-        self.stop_btn = QPushButton()
-        self._tr_reg(self.stop_btn, "train_btn_stop")
-        self.stop_btn.setObjectName("red")
-        self.stop_btn.clicked.connect(self._ctrl.stop_training)
-        row.addWidget(self.train_btn, 3)
-        row.addWidget(self.stop_btn, 1)
+        self.train_btn.clicked.connect(self._start_training_and_open_monitor)
+        row.addWidget(self.train_btn)
+        row.addStretch()
         v.addLayout(row)
         v.addWidget(self._tr_reg(QLabel(), "train_hint_footer"))
         return w
@@ -545,6 +548,12 @@ class MainWindow(QMainWindow):
         self._ctrl.set_precision(p)
         for pr, btn in getattr(self, "_prec_buttons", []):
             btn.setChecked(pr == p)
+
+    def _start_training_and_open_monitor(self) -> None:
+        self._ctrl.start_training()
+        # If training actually starts, switch to Monitor tab immediately.
+        if self._ctrl.is_training:
+            self.tabs.setCurrentIndex(3)
 
     def _page_monitor(self) -> QWidget:
         w = QWidget()
@@ -608,7 +617,25 @@ class MainWindow(QMainWindow):
             series.append(i, losses[i])
         chart = QChart()
         chart.addSeries(series)
-        chart.createDefaultAxes()
+        axis_x = QValueAxis()
+        axis_x.setTitleText("steps")
+        axis_x.setLabelFormat("%d")
+        axis_x.setRange(0, max(1, len(losses) - 1))
+
+        min_loss = min(losses) if losses else 0.0
+        max_loss = max(losses) if losses else 1.0
+        if min_loss == max_loss:
+            min_loss = max(0.0, min_loss - 1.0)
+            max_loss += 1.0
+        axis_y = QValueAxis()
+        axis_y.setTitleText("loss")
+        axis_y.setLabelFormat("%.4f")
+        axis_y.setRange(min_loss, max_loss)
+
+        chart.addAxis(axis_x, Qt.AlignBottom)
+        chart.addAxis(axis_y, Qt.AlignLeft)
+        series.attachAxis(axis_x)
+        series.attachAxis(axis_y)
         chart.legend().hide()
         v = QChartView(chart)
         lay.addWidget(v)
@@ -947,7 +974,6 @@ class MainWindow(QMainWindow):
         # ── Train tab buttons ─────────────────────────────────────────────────
         if hasattr(self, "train_btn"):
             self.train_btn.setEnabled(not c.is_training)
-            self.stop_btn.setEnabled(c.is_training)
             self.train_btn.setText(tr("train_in_progress") if c.is_training else tr("train_start"))
 
         self.refresh_model_fields()
