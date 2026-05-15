@@ -512,8 +512,8 @@ class HomeController(QObject):
 
     # --- repo ---
     def _default_repo_path(self) -> Path:
-        # default repo now lives under pyside_desktop/statetuning_repo
-        return project_root() / "pyside_desktop" / "statetuning_repo"
+        # Keep this independent from the desktop folder name.
+        return Path(__file__).resolve().parent / "statetuning_repo"
 
     def check_repo(self) -> None:
         if not self.repo_path:

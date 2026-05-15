@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
-"""Entry: python -m pyside_desktop.main (from repo root: statetuning/statetuning)."""
+"""Entry point for the PySide desktop app.
+
+Supported launches:
+- python -m pyside_desktop.main   (from project root, while the folder keeps this name)
+- python -m main                  (from this folder, even if the folder is renamed)
+- python main.py                  (from this folder, even if the folder is renamed)
+"""
 
 from __future__ import annotations
 
+import importlib
 import subprocess
 import sys
+import types
 from pathlib import Path
+
+
+_DYNAMIC_PACKAGE = "_statetuning_desktop_app"
+
 
 def _install_pyside6() -> None:
     requirements = Path(__file__).with_name("requirements.txt")
@@ -27,10 +39,26 @@ def _import_pyside6():
     return QApplication, QLocale, Qt
 
 
+def _import_app_modules():
+    """Import sibling modules without depending on this folder's name."""
+    if __package__ not in (None, ""):
+        from . import i18n
+        from .main_window import MainWindow
+
+        return i18n, MainWindow
+
+    package = types.ModuleType(_DYNAMIC_PACKAGE)
+    package.__path__ = [str(Path(__file__).resolve().parent)]  # type: ignore[attr-defined]
+    package.__package__ = _DYNAMIC_PACKAGE
+    sys.modules[_DYNAMIC_PACKAGE] = package
+    i18n = importlib.import_module(f"{_DYNAMIC_PACKAGE}.i18n")
+    main_window = importlib.import_module(f"{_DYNAMIC_PACKAGE}.main_window")
+    return i18n, main_window.MainWindow
+
+
 def main() -> None:
     QApplication, QLocale, Qt = _import_pyside6()
-    from . import i18n
-    from .main_window import MainWindow
+    i18n, MainWindow = _import_app_modules()
 
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
