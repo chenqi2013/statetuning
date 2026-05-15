@@ -44,6 +44,7 @@ _TAB_KEYS = (
 def _ss() -> str:
     return """
     QMainWindow, QWidget { background: #1a1d21; color: #e5e7eb; }
+    QLabel { background: transparent; }
     QGroupBox { font-weight: 600; border: 1px solid #3a3f47; border-radius: 10px;
                 margin-top: 10px; padding: 16px; background: #252830; }
     QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
