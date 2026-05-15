@@ -796,14 +796,15 @@ class MainWindow(QMainWindow):
         w = QWidget()
         v = QVBoxLayout(w)
 
-        load_grp = QGroupBox(tr("test_model_load_title"))
+        load_grp = QGroupBox()
+        self._tr_reg(load_grp, "test_model_load_title", "title")
         lg = QVBoxLayout(load_grp)
 
         # model .pth
-        lg.addWidget(QLabel(tr("label_pretrained_pth")))
+        lg.addWidget(self._tr_reg(QLabel(), "label_pretrained_pth"))
         mh = QHBoxLayout()
         self._test_model_le = QLineEdit()
-        self._test_model_le.setPlaceholderText(tr("hint_model_path"))
+        self._tr_reg(self._test_model_le, "hint_model_path", "placeholder")
         self._test_model_le.textChanged.connect(lambda t: setattr(self._ctrl, "test_model_path", t))
         mh.addWidget(self._test_model_le, 1)
         mb = QPushButton("…")
@@ -814,10 +815,10 @@ class MainWindow(QMainWindow):
         lg.addLayout(mh)
 
         # tokenizer
-        lg.addWidget(QLabel(tr("label_tokenizer_path")))
+        lg.addWidget(self._tr_reg(QLabel(), "label_tokenizer_path"))
         th = QHBoxLayout()
         self._test_tok_le = QLineEdit()
-        self._test_tok_le.setPlaceholderText("tokenizer.json / vocab file")
+        self._tr_reg(self._test_tok_le, "hint_tokenizer", "placeholder")
         self._test_tok_le.textChanged.connect(lambda t: setattr(self._ctrl, "test_tokenizer_path", t))
         th.addWidget(self._test_tok_le, 1)
         tb = QPushButton("…")
@@ -828,10 +829,10 @@ class MainWindow(QMainWindow):
         lg.addLayout(th)
 
         # state file
-        lg.addWidget(QLabel(tr("label_state_path")))
+        lg.addWidget(self._tr_reg(QLabel(), "label_state_path"))
         sh = QHBoxLayout()
         self._test_state_le = QLineEdit()
-        self._test_state_le.setPlaceholderText("state.pth (optional)")
+        self._tr_reg(self._test_state_le, "hint_state_file", "placeholder")
         self._test_state_le.textChanged.connect(lambda t: setattr(self._ctrl, "test_state_path", t))
         sh.addWidget(self._test_state_le, 1)
         stb = QPushButton("…")
@@ -842,10 +843,12 @@ class MainWindow(QMainWindow):
         lg.addLayout(sh)
 
         brow = QHBoxLayout()
-        load_btn = QPushButton(tr("btn_load_model"))
+        load_btn = QPushButton()
+        self._tr_reg(load_btn, "btn_load_model")
         load_btn.clicked.connect(self._ctrl.load_rwkv_test_model)
         brow.addWidget(load_btn)
-        clr = QPushButton(tr("monitor_clear_log"))
+        clr = QPushButton()
+        self._tr_reg(clr, "btn_clear_chat")
         clr.setObjectName("secondary")
         clr.clicked.connect(self._ctrl.clear_rwkv_chat)
         brow.addWidget(clr)
@@ -856,20 +859,22 @@ class MainWindow(QMainWindow):
         lg.addLayout(brow)
         v.addWidget(load_grp)
 
-        chat_grp = QGroupBox(tr("test_chat_title"))
+        chat_grp = QGroupBox()
+        self._tr_reg(chat_grp, "test_chat_title", "title")
         cl = QVBoxLayout(chat_grp)
         self.test_chat_view = QPlainTextEdit()
         self.test_chat_view.setReadOnly(True)
-        self.test_chat_view.setPlaceholderText(tr("test_chat_empty"))
+        self._tr_reg(self.test_chat_view, "test_chat_empty", "placeholder")
         self.test_chat_view.setFont(QFont("Menlo", 11) if sys.platform == "darwin" else QFont("Consolas", 10))
         cl.addWidget(self.test_chat_view, 1)
 
         ph = QHBoxLayout()
         self.test_prompt_le = QLineEdit()
-        self.test_prompt_le.setPlaceholderText(tr("test_prompt_hint"))
+        self._tr_reg(self.test_prompt_le, "test_prompt_hint", "placeholder")
         self.test_prompt_le.returnPressed.connect(self._send_test_prompt)
         ph.addWidget(self.test_prompt_le, 1)
-        send_btn = QPushButton(tr("btn_send"))
+        send_btn = QPushButton()
+        self._tr_reg(send_btn, "btn_send")
         send_btn.clicked.connect(self._send_test_prompt)
         ph.addWidget(send_btn)
         cl.addLayout(ph)
@@ -883,13 +888,13 @@ class MainWindow(QMainWindow):
             self._test_model_le.setText(p)
 
     def _pick_test_tokenizer(self) -> None:
-        p, _ = QFileDialog.getOpenFileName(self, "Pick tokenizer", "", "*.json *.txt;;All (*)")
+        p, _ = QFileDialog.getOpenFileName(self, tr("snackbar_dialog_pick_tokenizer"), "", "*.json *.txt;;All (*)")
         if p:
             self._ctrl.test_tokenizer_path = p
             self._test_tok_le.setText(p)
 
     def _pick_test_state(self) -> None:
-        p, _ = QFileDialog.getOpenFileName(self, "Pick state file", "", "*.pth;;All (*)")
+        p, _ = QFileDialog.getOpenFileName(self, tr("snackbar_dialog_pick_state"), "", "*.pth;;All (*)")
         if p:
             self._ctrl.test_state_path = p
             self._test_state_le.setText(p)
