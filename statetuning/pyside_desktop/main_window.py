@@ -507,6 +507,11 @@ class MainWindow(QMainWindow):
             if "output_dir" in self._inputs:
                 self._inputs["output_dir"].setText(p)
 
+    def _pick_python_env(self) -> None:
+        p = QFileDialog.getExistingDirectory(self, tr("dialog_pick_python_env"))
+        if p:
+            self._ctrl.select_python_env_dir(p)
+
     def _page_data(self) -> QWidget:
         w = QWidget()
         v = QVBoxLayout(w)
@@ -877,6 +882,11 @@ class MainWindow(QMainWindow):
         self._tr_reg(chk, "env_check_env")
         chk.clicked.connect(self._ctrl.check_environment)
         ebrow.addWidget(chk)
+        pick_env = QPushButton()
+        self._tr_reg(pick_env, "btn_select_python_env")
+        pick_env.setObjectName("secondary")
+        pick_env.clicked.connect(self._pick_python_env)
+        ebrow.addWidget(pick_env)
         self.env_install_btn = QPushButton()
         self._tr_reg(self.env_install_btn, "btn_install_env")
         self.env_install_btn.clicked.connect(self._ctrl.install_environment)
@@ -1032,6 +1042,9 @@ class MainWindow(QMainWindow):
 
     def refresh(self) -> None:
         c = self._ctrl
+        environment_fully_ready = c.env_ready and (
+            sys.platform != "win32" or c.build_tools_fully_ready
+        )
         self.setWindowTitle(tr("app_title"))
         self.gpu_label.setText(tr("gpu_chip", v=c.gpu_info) if c.env_ready else c.gpu_info)
         self.status_label.setText(c.status)
@@ -1073,14 +1086,22 @@ class MainWindow(QMainWindow):
         if hasattr(self, "msvc_lbl"):
             self.msvc_lbl.setText(f"MSVC cl  {'✓' if c.msvc_cl_on_path else '✗'}")
         if hasattr(self, "build_tools_log_view"):
-            self.build_tools_log_view.setPlainText(c.build_tools_log)
+            self.build_tools_log_view.setPlainText(
+                tr("log_env_ready_display")
+                if environment_fully_ready
+                else c.build_tools_log
+            )
         if hasattr(self, "bt_install_btn"):
             self.bt_install_btn.setVisible(not c.build_tools_fully_ready)
             self.bt_install_btn.setEnabled(not c.is_build_tools_installing)
 
         # ── Env log ───────────────────────────────────────────────────────────
         if hasattr(self, "env_log"):
-            self.env_log.setPlainText((c.check_log + "\n" + c.install_log).strip())
+            self.env_log.setPlainText(
+                tr("log_env_ready_display")
+                if environment_fully_ready
+                else (c.check_log + "\n" + c.install_log).strip()
+            )
         if hasattr(self, "env_install_btn"):
             self.env_install_btn.setVisible(not c.env_ready)
             self.env_install_btn.setEnabled(not c.is_installing and not c.is_checking)

@@ -157,6 +157,7 @@ class HomeController(QObject):
         self.is_checking = False
         self.env_ready = False
         self.check_log = ""
+        self.python_env_dir = ""
         self._has_guided_to_settings = False
 
         # Test tab — no rwkv_mobile on desktop
@@ -214,38 +215,63 @@ class HomeController(QObject):
     def precision_string(self) -> str:
         return self.precision.value
 
-    def _venv_python_path(self) -> Optional[Path]:
+    def _default_venv_dir(self) -> Optional[Path]:
         if not self.repo_path:
             return None
-        r = Path(self.repo_path)
+        return Path(self.repo_path) / "python_venv"
+
+    def _venv_dir(self) -> Optional[Path]:
+        if self.python_env_dir:
+            return Path(self.python_env_dir)
+        return self._default_venv_dir()
+
+    def _venv_python_path(self) -> Optional[Path]:
+        r = self._venv_dir()
+        if r is None:
+            return None
         if is_windows():
-            p = r / "python_venv" / "Scripts" / "python.exe"
+            p = r / "Scripts" / "python.exe"
         else:
-            p = r / "python_venv" / "bin" / "python"
+            p = r / "bin" / "python"
         return p if p.exists() else None
 
     def _env_with_torch_runtime(self) -> Dict[str, str]:
         env = dict(os.environ)
         vpy = self._venv_python_path()
-        if vpy is None or not self.repo_path:
+        venv_dir = self._venv_dir()
+        if vpy is None or venv_dir is None:
             return env
         sep = os.pathsep
-        r = Path(self.repo_path)
         if is_windows():
-            venv_scripts = str(r / "python_venv" / "Scripts")
-            torch_lib = str(
-                r / "python_venv" / "Lib" / "site-packages" / "torch" / "lib"
-            )
+            venv_scripts = str(venv_dir / "Scripts")
+            torch_lib = str(venv_dir / "Lib" / "site-packages" / "torch" / "lib")
         else:
-            venv_scripts = str(r / "python_venv" / "bin")
-            torch_lib = str(
-                r / "python_venv" / "lib" / "site-packages" / "torch" / "lib"
-            )
+            venv_scripts = str(venv_dir / "bin")
+            torch_candidates = list(venv_dir.glob("lib/python*/site-packages/torch/lib"))
+            torch_lib = str(torch_candidates[0]) if torch_candidates else ""
         env["PATH"] = venv_scripts + sep + torch_lib + sep + env.get("PATH", "")
         if self.cuda_home:
             cuda_bin = str(Path(self.cuda_home) / "bin")
             env["PATH"] = cuda_bin + sep + env["PATH"]
         return env
+
+    def select_python_env_dir(self, path: str) -> None:
+        if not path:
+            return
+        selected = Path(path)
+        if selected.name in ("bin", "Scripts"):
+            py_name = "python.exe" if is_windows() else "python"
+            if (selected / py_name).exists():
+                selected = selected.parent
+        self.python_env_dir = str(selected)
+        self.env_ready = False
+        self.check_log = tr("log_env_selected_dir", path=self.python_env_dir)
+        self.install_log = ""
+        self._emit()
+        if self._venv_python_path():
+            self.check_environment()
+        else:
+            self.install_environment()
 
     def _resolved_output_dir(self) -> str:
         od = self.output_dir.strip()
@@ -846,17 +872,11 @@ class HomeController(QObject):
             vc = self._find_vcvarsall()
             if vc:
                 launcher = Path(self.repo_path) / "_pyside_train.cmd"
+                venv_dir = self._venv_dir() or (Path(self.repo_path) / "python_venv")
                 sep_dirs = [
                     str(Path(self.cuda_home) / "bin") if self.cuda_home else "",
-                    str(
-                        Path(self.repo_path)
-                        / "python_venv"
-                        / "Lib"
-                        / "site-packages"
-                        / "torch"
-                        / "lib"
-                    ),
-                    str(Path(self.repo_path) / "python_venv" / "Scripts"),
+                    str(venv_dir / "Lib" / "site-packages" / "torch" / "lib"),
+                    str(venv_dir / "Scripts"),
                 ]
                 cmd_prefix = ";".join(x for x in sep_dirs if x)
                 quoted_py = f'"{py}"' if " " in py else py
@@ -1070,6 +1090,10 @@ class HomeController(QObject):
                 return
             except Exception:
                 pass
+        if self.python_env_dir:
+            self.python_installed = False
+            self._emit()
+            return
         self.python_installed = False
         check_cmds = [["python", "--version"], ["py", "-3", "--version"], ["python3", "--version"]]
         for cmd in check_cmds:
@@ -1100,8 +1124,9 @@ class HomeController(QObject):
                 ninja_ok = r.returncode == 0
             except Exception:
                 pass
-            if not ninja_ok and self.repo_path:
-                vn = Path(self.repo_path) / "python_venv" / "Scripts" / "ninja.exe"
+            if not ninja_ok:
+                vd = self._venv_dir()
+                vn = (vd / "Scripts" / "ninja.exe") if vd else Path()
                 ninja_ok = vn.is_file()
             self.ninja_on_path = ninja_ok
             try:
@@ -1120,8 +1145,9 @@ class HomeController(QObject):
                 )
         else:
             ninja_ok = shutil.which("ninja") is not None
-            if not ninja_ok and self.repo_path:
-                vn = Path(self.repo_path) / "python_venv" / "bin" / "ninja"
+            if not ninja_ok:
+                vd = self._venv_dir()
+                vn = (vd / "bin" / "ninja") if vd else Path()
                 ninja_ok = vn.is_file()
             self.ninja_on_path = ninja_ok
             self.msvc_cl_on_path = False
@@ -1328,7 +1354,7 @@ class HomeController(QObject):
         try:
             vpy = self._venv_python_path()
             rp = Path(self.repo_path)
-            venv_dir = rp / "python_venv"
+            venv_dir = self._venv_dir() or (rp / "python_venv")
 
             self._detect_uv_bg()
 
