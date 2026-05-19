@@ -802,33 +802,36 @@ class MainWindow(QMainWindow):
         self._tr_reg(sb, "settings_system_basics", "title")
         sg = QVBoxLayout(sb)
 
-        # winget row
-        wh = QHBoxLayout()
-        self.winget_lbl = QLabel()
-        wh.addWidget(self.winget_lbl, 1)
-        wh.addStretch()
-        sg.addLayout(wh)
+        if sys.platform == "win32":
+            # winget row (Windows only)
+            wh = QHBoxLayout()
+            self.winget_lbl = QLabel()
+            wh.addWidget(self.winget_lbl, 1)
+            wh.addStretch()
+            sg.addLayout(wh)
 
         # UV row
         uh = QHBoxLayout()
         self.uv_lbl = QLabel()
         uh.addWidget(self.uv_lbl, 1)
-        self.uv_install_btn = QPushButton()
-        self._tr_reg(self.uv_install_btn, "btn_install")
-        self.uv_install_btn.setObjectName("secondary")
-        self.uv_install_btn.clicked.connect(self._ctrl.install_uv)
-        uh.addWidget(self.uv_install_btn)
+        if sys.platform == "win32":
+            self.uv_install_btn = QPushButton()
+            self._tr_reg(self.uv_install_btn, "btn_install")
+            self.uv_install_btn.setObjectName("secondary")
+            self.uv_install_btn.clicked.connect(self._ctrl.install_uv)
+            uh.addWidget(self.uv_install_btn)
         sg.addLayout(uh)
 
         # NVIDIA driver row
         nh = QHBoxLayout()
         self.nvidia_lbl = QLabel()
         nh.addWidget(self.nvidia_lbl, 1)
-        self.nvidia_install_btn = QPushButton()
-        self._tr_reg(self.nvidia_install_btn, "btn_install")
-        self.nvidia_install_btn.setObjectName("secondary")
-        self.nvidia_install_btn.clicked.connect(self._ctrl.install_nvidia_driver)
-        nh.addWidget(self.nvidia_install_btn)
+        if sys.platform == "win32":
+            self.nvidia_install_btn = QPushButton()
+            self._tr_reg(self.nvidia_install_btn, "btn_install")
+            self.nvidia_install_btn.setObjectName("secondary")
+            self.nvidia_install_btn.clicked.connect(self._ctrl.install_nvidia_driver)
+            nh.addWidget(self.nvidia_install_btn)
         sg.addLayout(nh)
 
         self.sys_log = QPlainTextEdit()
@@ -851,11 +854,12 @@ class MainWindow(QMainWindow):
         self._tr_reg(ad, "btn_auto_detect")
         ad.clicked.connect(self._ctrl.detect_cuda_home)
         brow.addWidget(ad)
-        self.cuda_install_btn = QPushButton()
-        self._tr_reg(self.cuda_install_btn, "btn_install_cuda")
-        self.cuda_install_btn.setObjectName("secondary")
-        self.cuda_install_btn.clicked.connect(self._ctrl.install_cuda_winget)
-        brow.addWidget(self.cuda_install_btn)
+        if sys.platform == "win32":
+            self.cuda_install_btn = QPushButton()
+            self._tr_reg(self.cuda_install_btn, "btn_install_cuda")
+            self.cuda_install_btn.setObjectName("secondary")
+            self.cuda_install_btn.clicked.connect(self._ctrl.install_cuda_winget)
+            brow.addWidget(self.cuda_install_btn)
         brow.addStretch()
         cl.addLayout(brow)
         self.cuda_log = QPlainTextEdit()
@@ -884,27 +888,28 @@ class MainWindow(QMainWindow):
         el.addWidget(self.env_log)
         v.addWidget(eg)
 
-        # ── Build Tools (Windows only) ────────────────────────────────────────
-        btg = QGroupBox()
-        self._tr_reg(btg, "build_tools_section", "title")
-        btl = QVBoxLayout(btg)
-        bth = QHBoxLayout()
-        self.ninja_lbl = QLabel()
-        self.msvc_lbl = QLabel()
-        bth.addWidget(self.ninja_lbl)
-        bth.addWidget(self.msvc_lbl)
-        bth.addStretch()
-        self.bt_install_btn = QPushButton()
-        self._tr_reg(self.bt_install_btn, "btn_install_build_tools")
-        self.bt_install_btn.setObjectName("secondary")
-        self.bt_install_btn.clicked.connect(self._ctrl.install_build_tools)
-        bth.addWidget(self.bt_install_btn)
-        btl.addLayout(bth)
-        self.build_tools_log_view = QPlainTextEdit()
-        self.build_tools_log_view.setReadOnly(True)
-        self.build_tools_log_view.setMaximumHeight(80)
-        btl.addWidget(self.build_tools_log_view)
-        v.addWidget(btg)
+        if sys.platform == "win32":
+            # ── Build Tools (Windows only) ────────────────────────────────────
+            btg = QGroupBox()
+            self._tr_reg(btg, "build_tools_section", "title")
+            btl = QVBoxLayout(btg)
+            bth = QHBoxLayout()
+            self.ninja_lbl = QLabel()
+            self.msvc_lbl = QLabel()
+            bth.addWidget(self.ninja_lbl)
+            bth.addWidget(self.msvc_lbl)
+            bth.addStretch()
+            self.bt_install_btn = QPushButton()
+            self._tr_reg(self.bt_install_btn, "btn_install_build_tools")
+            self.bt_install_btn.setObjectName("secondary")
+            self.bt_install_btn.clicked.connect(self._ctrl.install_build_tools)
+            bth.addWidget(self.bt_install_btn)
+            btl.addLayout(bth)
+            self.build_tools_log_view = QPlainTextEdit()
+            self.build_tools_log_view.setReadOnly(True)
+            self.build_tools_log_view.setMaximumHeight(80)
+            btl.addWidget(self.build_tools_log_view)
+            v.addWidget(btg)
 
         v.addStretch()
         return w
@@ -1048,12 +1053,14 @@ class MainWindow(QMainWindow):
         if hasattr(self, "uv_lbl"):
             ok = "✓" if c.uv_installed else "✗"
             self.uv_lbl.setText(f"uv  {ok}")
-            self.uv_install_btn.setVisible(not c.uv_installed)
-            self.uv_install_btn.setEnabled(not c.is_uv_installing)
+            if hasattr(self, "uv_install_btn"):
+                self.uv_install_btn.setVisible(not c.uv_installed)
+                self.uv_install_btn.setEnabled(not c.is_uv_installing)
         if hasattr(self, "nvidia_lbl"):
             ok = "✓" if c.nvidia_driver_installed else "✗"
             self.nvidia_lbl.setText(f"NVIDIA Driver  {ok}")
-            self.nvidia_install_btn.setVisible(not c.nvidia_driver_installed)
+            if hasattr(self, "nvidia_install_btn"):
+                self.nvidia_install_btn.setVisible(not c.nvidia_driver_installed)
         if hasattr(self, "sys_log"):
             self.sys_log.setPlainText(c.uv_install_log)
         if hasattr(self, "cuda_install_btn"):

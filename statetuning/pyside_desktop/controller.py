@@ -951,6 +951,25 @@ class HomeController(QObject):
                         return str(cand)
         return None
 
+    def _find_msvc_cl(self) -> Optional[str]:
+        if not is_windows():
+            return None
+        roots = [
+            Path(r"C:\Program Files\Microsoft Visual Studio"),
+            Path(r"C:\Program Files (x86)\Microsoft Visual Studio"),
+        ]
+        for root in roots:
+            if not root.is_dir():
+                continue
+            candidates = sorted(
+                root.glob(r"*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"),
+                key=lambda p: str(p),
+                reverse=True,
+            )
+            if candidates:
+                return str(candidates[0])
+        return None
+
     def _on_train_stdout(self) -> None:
         if not self._proc:
             return
@@ -1089,9 +1108,16 @@ class HomeController(QObject):
                 cl = subprocess.run(
                     ["where", "cl"], capture_output=True, text=True, shell=True
                 )
-                self.msvc_cl_on_path = cl.returncode == 0
+                self.msvc_cl_on_path = (
+                    cl.returncode == 0
+                    or self._find_vcvarsall() is not None
+                    or self._find_msvc_cl() is not None
+                )
             except Exception:
-                self.msvc_cl_on_path = False
+                self.msvc_cl_on_path = (
+                    self._find_vcvarsall() is not None
+                    or self._find_msvc_cl() is not None
+                )
         else:
             ninja_ok = shutil.which("ninja") is not None
             if not ninja_ok and self.repo_path:
