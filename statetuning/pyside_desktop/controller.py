@@ -11,6 +11,7 @@ import tempfile
 import subprocess
 import sys
 import threading
+import time
 import zipfile
 from dataclasses import dataclass
 from enum import Enum
@@ -1300,15 +1301,35 @@ class HomeController(QObject):
         self._emit()
         try:
             vpy = self._venv_python_path()
-            use_uv = vpy is not None and self.uv_installed
             rp = Path(self.repo_path)
             venv_dir = rp / "python_venv"
+
+            self._detect_uv_bg()
+
             # create venv if missing
             if not vpy:
+                self.install_log += "\n" + tr("log_env_installing_pkg", pkg="python_venv")
+                self._emit()
                 if self.uv_installed:
-                    subprocess.run(["uv", "venv", str(venv_dir)], capture_output=True)
+                    r = subprocess.run(
+                        ["uv", "venv", str(venv_dir)],
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                    )
                 else:
-                    subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], capture_output=True)
+                    r = subprocess.run(
+                        [sys.executable, "-m", "venv", str(venv_dir)],
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                    )
+                if r.returncode != 0:
+                    out = ((r.stdout or "") + (r.stderr or "")).strip()
+                    self.install_log += "\n" + (out[-800:] if out else tr("log_env_venv_fail"))
+                    self.is_installing = False
+                    self._emit()
+                    return
                 vpy = self._venv_python_path()
                 if vpy is None:
                     self.install_log += "\n" + tr("log_env_venv_fail")
@@ -1316,9 +1337,167 @@ class HomeController(QObject):
                     self._emit()
                     return
 
+            def ensure_pip_available() -> bool:
+                pip_check = subprocess.run(
+                    [str(vpy), "-m", "pip", "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                if pip_check.returncode == 0:
+                    return True
+                self.install_log += "\n" + tr("log_env_installing_pkg", pkg="pip")
+                self._emit()
+                ensure = subprocess.run(
+                    [str(vpy), "-m", "ensurepip", "--upgrade"],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+                if ensure.returncode == 0:
+                    return True
+                out = ((ensure.stdout or "") + (ensure.stderr or "")).strip()
+                self.install_log += "\n" + (out[-800:] if out else "pip unavailable")
+                self.is_installing = False
+                self._emit()
+                return False
+
+            def without_proxy_env() -> Dict[str, str]:
+                env = dict(os.environ)
+                for key in (
+                    "HTTP_PROXY",
+                    "HTTPS_PROXY",
+                    "ALL_PROXY",
+                    "http_proxy",
+                    "https_proxy",
+                    "all_proxy",
+                    "PIP_PROXY",
+                    "pip_proxy",
+                    "UV_HTTP_PROXY",
+                    "UV_HTTPS_PROXY",
+                ):
+                    env.pop(key, None)
+                env["NO_PROXY"] = "*"
+                env["no_proxy"] = "*"
+                return env
+
+            def looks_like_proxy_failure(text: str) -> bool:
+                lower = text.lower()
+                return (
+                    "proxyerror" in lower
+                    or "cannot connect to proxy" in lower
+                    or "tunnel error" in lower
+                    or "failed to create underlying connection" in lower
+                )
+
+            def run_install_cmd(
+                cmd: list[str],
+                timeout: int,
+                env: Optional[Dict[str, str]] = None,
+                retry_proxy: bool = True,
+            ) -> subprocess.CompletedProcess[str]:
+                captured: list[str] = []
+                last_emit = 0.0
+
+                def append_output(text: str, *, force_emit: bool = False) -> None:
+                    nonlocal last_emit
+                    captured.append(text)
+                    for ch in text:
+                        if ch == "\r":
+                            last_newline = self.install_log.rfind("\n")
+                            self.install_log = (
+                                self.install_log[: last_newline + 1]
+                                if last_newline >= 0
+                                else ""
+                            )
+                        else:
+                            self.install_log += ch
+                    now = time.monotonic()
+                    if force_emit or now - last_emit >= 0.25:
+                        last_emit = now
+                        self._emit()
+
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    env=env,
+                )
+
+                def reader() -> None:
+                    if proc.stdout is None:
+                        return
+                    while True:
+                        chunk = proc.stdout.read(1)
+                        if not chunk:
+                            break
+                        append_output(chunk)
+
+                reader_thread = threading.Thread(target=reader, daemon=True)
+                reader_thread.start()
+                try:
+                    returncode = proc.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    returncode = proc.wait()
+                    append_output("\nCommand timed out.\n", force_emit=True)
+                reader_thread.join(timeout=2)
+                append_output("", force_emit=True)
+                r = subprocess.CompletedProcess(
+                    cmd,
+                    returncode,
+                    stdout="".join(captured),
+                    stderr="",
+                )
+                out = (r.stdout or "").strip()
+                if retry_proxy and r.returncode != 0 and looks_like_proxy_failure(out):
+                    self.install_log += "\n" + tr("log_env_retry_no_proxy")
+                    self._emit()
+                    r = run_install_cmd(
+                        cmd,
+                        timeout=timeout,
+                        env=without_proxy_env(),
+                        retry_proxy=False,
+                    )
+                return r
+
+            # Important on Linux: uv-created venvs may not contain pip. Prefer
+            # `uv pip`, but keep a real pip fallback for uv network/proxy issues.
+            use_uv = self.uv_installed and shutil.which("uv") is not None
+            if not use_uv and not ensure_pip_available():
+                return
+
             cuda_tag = self._get_cuda_wheel_tag()
             torch_index = f"https://download.pytorch.org/whl/{cuda_tag}"
-            pkgs = list(_ENV_PACKAGES) + [f"torch --index-url {torch_index}"]
+            pkgs = [p for p in _ENV_PACKAGES if not p.startswith("torch")]
+
+            self.install_log += "\n" + tr("log_env_installing_pkg", pkg="torch")
+            self._emit()
+            # Use pip for the large torch wheel so progress is visible in logs.
+            # uv hides detailed progress when stdout/stderr are captured.
+            if not ensure_pip_available():
+                return
+            cmd = [
+                str(vpy),
+                "-m",
+                "pip",
+                "install",
+                "--progress-bar",
+                "on",
+                "torch>=2.0.0",
+                "--index-url",
+                torch_index,
+            ]
+            r = run_install_cmd(cmd, timeout=1200)
+            out = ((r.stdout or "") + (r.stderr or "")).strip()
+            if r.returncode != 0:
+                self.install_log += "\n" + out[-800:]
+                self.is_installing = False
+                self._emit()
+                return
+            self.install_log += " ✓"
 
             for pkg in pkgs:
                 self.install_log += "\n" + tr("log_env_installing_pkg", pkg=pkg.split()[0])
@@ -1326,11 +1505,36 @@ class HomeController(QObject):
                 if use_uv:
                     cmd = ["uv", "pip", "install", "--python", str(vpy)] + pkg.split()
                 else:
-                    cmd = [str(vpy), "-m", "pip", "install"] + pkg.split()
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                    cmd = [
+                        str(vpy),
+                        "-m",
+                        "pip",
+                        "install",
+                        "--progress-bar",
+                        "on",
+                    ] + pkg.split()
+                r = run_install_cmd(cmd, timeout=600)
                 out = ((r.stdout or "") + (r.stderr or "")).strip()
+                if r.returncode != 0 and use_uv:
+                    self.install_log += "\n" + tr("log_install_torch_pip_fallback")
+                    self._emit()
+                    if not ensure_pip_available():
+                        return
+                    cmd = [
+                        str(vpy),
+                        "-m",
+                        "pip",
+                        "install",
+                        "--progress-bar",
+                        "on",
+                    ] + pkg.split()
+                    r = run_install_cmd(cmd, timeout=600)
+                    out = ((r.stdout or "") + (r.stderr or "")).strip()
                 if r.returncode != 0:
-                    self.install_log += "\n" + out[-500:]
+                    self.install_log += "\n" + out[-800:]
+                    self.is_installing = False
+                    self._emit()
+                    return
                 else:
                     self.install_log += " ✓"
                 self._emit()
