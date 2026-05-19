@@ -1075,7 +1075,11 @@ class MainWindow(QMainWindow):
             if hasattr(self, "nvidia_install_btn"):
                 self.nvidia_install_btn.setVisible(not c.nvidia_driver_installed)
         if hasattr(self, "sys_log"):
-            self.sys_log.setPlainText(c.uv_install_log)
+            self.sys_log.setPlainText(
+                tr("log_env_ready_display")
+                if environment_fully_ready
+                else c.uv_install_log
+            )
         if hasattr(self, "cuda_install_btn"):
             self.cuda_install_btn.setVisible(not c.cuda_installed)
             self.cuda_install_btn.setEnabled(not c.is_cuda_installing)
@@ -1097,11 +1101,7 @@ class MainWindow(QMainWindow):
 
         # ── Env log ───────────────────────────────────────────────────────────
         if hasattr(self, "env_log"):
-            self.env_log.setPlainText(
-                tr("log_env_ready_display")
-                if environment_fully_ready
-                else (c.check_log + "\n" + c.install_log).strip()
-            )
+            self.env_log.setPlainText((c.check_log + "\n" + c.install_log).strip())
         if hasattr(self, "env_install_btn"):
             self.env_install_btn.setVisible(not c.env_ready)
             self.env_install_btn.setEnabled(not c.is_installing and not c.is_checking)
