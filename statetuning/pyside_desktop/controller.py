@@ -164,11 +164,14 @@ class HomeController(QObject):
         self.test_model_path = ""
         self.test_tokenizer_path = ""
         self.test_state_path = ""
+        self.test_prompt = ""
         self.is_rwkv_loading = False
         self.is_rwkv_generating = False
         self.rwkv_status = tr("rwkv_status_uninit")
         self.rwkv_test_log = ""
         self.rwkv_messages: List[Dict[str, str]] = []
+        self._rwkv_test_proc: Optional[subprocess.Popen[str]] = None
+        self._rwkv_test_reader: Optional[threading.Thread] = None
 
         self.uv_installed = False
         self.is_uv_installing = False
@@ -1642,7 +1645,127 @@ class HomeController(QObject):
 
     # --- RWKV test (placeholder) ---
     def load_rwkv_test_model(self) -> None:
-        self._toast(tr("tip"), "RWKV chat test: use Flutter build or Python CLI; not bundled in PySide.")
+        if not self.test_model_path:
+            self._toast(tr("tip"), tr("snackbar_pick_model_first"))
+            return
+        vpy = self._venv_python_path()
+        if vpy is None:
+            self._toast(tr("tip"), tr("snackbar_env_use_install"))
+            return
+        if not self.repo_path:
+            self._toast(tr("tip"), tr("snackbar_wait_repo"))
+            return
+        _run_bg(self._load_rwkv_test_model_bg)
+
+    def _append_rwkv_log(self, text: str) -> None:
+        self.rwkv_test_log = (self.rwkv_test_log + text + "\n")[-12000:]
+
+    def _stop_rwkv_test_proc(self) -> None:
+        proc = self._rwkv_test_proc
+        if proc is None:
+            return
+        try:
+            if proc.stdin:
+                proc.stdin.write(json.dumps({"cmd": "quit"}) + "\n")
+                proc.stdin.flush()
+        except Exception:
+            pass
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        self._rwkv_test_proc = None
+
+    def _load_rwkv_test_model_bg(self) -> None:
+        self.is_rwkv_loading = True
+        self.rwkv_status = tr("rwkv_start_load")
+        self.rwkv_test_log = ""
+        self._emit()
+        try:
+            self._stop_rwkv_test_proc()
+            vpy = self._venv_python_path()
+            if vpy is None:
+                raise RuntimeError(tr("snackbar_env_use_install"))
+            worker = Path(self.repo_path) / "_pyside_rwkv_test_worker.py"
+            if not worker.is_file():
+                raise RuntimeError(f"Worker not found: {worker}")
+            cmd = [
+                str(vpy),
+                "-u",
+                str(worker),
+                "--model",
+                self.test_model_path,
+                "--precision",
+                self.precision_string,
+            ]
+            if self.test_tokenizer_path:
+                cmd.extend(["--tokenizer", self.test_tokenizer_path])
+            if self.test_state_path:
+                cmd.extend(["--state", self.test_state_path])
+            env = self._env_with_torch_runtime()
+            proc = subprocess.Popen(
+                cmd,
+                cwd=self.repo_path,
+                env=env,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            self._rwkv_test_proc = proc
+
+            def reader() -> None:
+                assert proc.stdout is not None
+                for line in proc.stdout:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                    except json.JSONDecodeError:
+                        self._append_rwkv_log(line)
+                        self._emit()
+                        continue
+                    event = msg.get("event")
+                    if event == "loaded":
+                        self.is_rwkv_loading = False
+                        self.rwkv_status = tr(
+                            "rwkv_status_loaded",
+                            id=str(msg.get("detail", "python")),
+                        )
+                        self._append_rwkv_log(str(msg.get("detail", "")))
+                    elif event == "partial":
+                        text = str(msg.get("text", ""))
+                        if self.rwkv_messages and self.rwkv_messages[-1].get("role") == "assistant":
+                            self.rwkv_messages[-1]["content"] = text
+                    elif event == "done":
+                        self.is_rwkv_generating = False
+                        text = str(msg.get("text", ""))
+                        if self.rwkv_messages and self.rwkv_messages[-1].get("role") == "assistant":
+                            self.rwkv_messages[-1]["content"] = text
+                        self._append_rwkv_log(tr("rwkv_log_round_done"))
+                    elif event == "error":
+                        self.is_rwkv_loading = False
+                        self.is_rwkv_generating = False
+                        self.rwkv_status = tr("rwkv_status_load_failed")
+                        self._append_rwkv_log(str(msg.get("message", "")))
+                    self._emit()
+                if self._rwkv_test_proc is proc:
+                    self._rwkv_test_proc = None
+                    self.is_rwkv_loading = False
+                    self.is_rwkv_generating = False
+                    self._emit()
+
+            self._rwkv_test_reader = threading.Thread(target=reader, daemon=True)
+            self._rwkv_test_reader.start()
+        except Exception as e:
+            self.is_rwkv_loading = False
+            self.rwkv_status = tr("rwkv_status_load_failed")
+            self._append_rwkv_log(str(e))
+            self._toast(tr("snackbar_load_failed"), str(e))
+        finally:
+            self._emit()
 
     def clear_rwkv_chat(self) -> None:
         self.rwkv_messages.clear()
@@ -1650,4 +1773,37 @@ class HomeController(QObject):
         self._emit()
 
     def send_rwkv_prompt(self) -> None:
-        pass
+        prompt = getattr(self, "test_prompt", "").strip()
+        if not prompt:
+            return
+        proc = self._rwkv_test_proc
+        if proc is None or proc.stdin is None:
+            self._toast(tr("tip"), tr("snackbar_load_model_first"))
+            return
+        if self.is_rwkv_generating:
+            return
+        self.is_rwkv_generating = True
+        self.rwkv_messages.append({"role": "user", "content": prompt})
+        self.rwkv_messages.append({"role": "assistant", "content": ""})
+        self.test_prompt = ""
+        self._emit()
+        try:
+            proc.stdin.write(
+                json.dumps(
+                    {
+                        "cmd": "generate",
+                        "prompt": f"User: {prompt}\n\nAssistant:",
+                        "max_tokens": 128,
+                        "temperature": 0.8,
+                        "top_p": 0.9,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+            proc.stdin.flush()
+        except Exception as e:
+            self.is_rwkv_generating = False
+            self._append_rwkv_log(str(e))
+            self._toast(tr("snackbar_gen_failed"), str(e))
+            self._emit()

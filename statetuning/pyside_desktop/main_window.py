@@ -1036,7 +1036,7 @@ class MainWindow(QMainWindow):
         if not txt:
             return
         self.test_prompt_le.clear()
-        self._ctrl.rwkv_messages.append({"role": "user", "content": txt})
+        self._ctrl.test_prompt = txt
         self._ctrl.send_rwkv_prompt()
         self.refresh()
 
