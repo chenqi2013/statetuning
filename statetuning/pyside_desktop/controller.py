@@ -299,6 +299,15 @@ class HomeController(QObject):
             cmds.extend([["python3"], ["python"]])
         return cmds
 
+    def _python_executable_for_runtime(self) -> Optional[str]:
+        vpy = self._venv_python_path()
+        if vpy:
+            return str(vpy)
+        if is_windows():
+            return shutil.which("python") or sys.executable
+        return shutil.which("python3") or shutil.which("python") or sys.executable
+
+
     def _detect_gpu(self) -> None:
         saw_no_cuda = False
         py_script = (
@@ -1648,12 +1657,11 @@ class HomeController(QObject):
         if not self.test_model_path:
             self._toast(tr("tip"), tr("snackbar_pick_model_first"))
             return
-        vpy = self._venv_python_path()
-        if vpy is None:
-            self._toast(tr("tip"), tr("snackbar_env_use_install"))
-            return
         if not self.repo_path:
             self._toast(tr("tip"), tr("snackbar_wait_repo"))
+            return
+        if self._python_executable_for_runtime() is None:
+            self._toast(tr("tip"), tr("snackbar_env_use_install"))
             return
         _run_bg(self._load_rwkv_test_model_bg)
 
@@ -1683,14 +1691,16 @@ class HomeController(QObject):
         self._emit()
         try:
             self._stop_rwkv_test_proc()
-            vpy = self._venv_python_path()
-            if vpy is None:
+            py = self._python_executable_for_runtime()
+            if py is None:
                 raise RuntimeError(tr("snackbar_env_use_install"))
             worker = Path(self.repo_path) / "_pyside_rwkv_test_worker.py"
             if not worker.is_file():
                 raise RuntimeError(f"Worker not found: {worker}")
             cmd = [
-                str(vpy),
+                py,
+                "-X",
+                "utf8",
                 "-u",
                 str(worker),
                 "--model",
@@ -1703,17 +1713,36 @@ class HomeController(QObject):
             if self.test_state_path:
                 cmd.extend(["--state", self.test_state_path])
             env = self._env_with_torch_runtime()
+            launch_cmd = cmd
+            if is_windows():
+                vc = self._find_vcvarsall()
+                if vc:
+                    launcher = Path(self.repo_path) / "_pyside_rwkv_test.cmd"
+                    bat = (
+                        "@echo off\r\n"
+                        'set "VSLANG=1033"\r\n'
+                        'set "PYTHONUTF8=1"\r\n'
+                        f'call "{vc}" x64\r\n'
+                        "if errorlevel 1 exit /b %errorlevel%\r\n"
+                        f"{subprocess.list2cmdline(cmd)}\r\n"
+                    )
+                    launcher.write_text(bat, encoding="utf-8")
+                    launch_cmd = ["cmd.exe", "/d", "/s", "/c", str(launcher)]
+                    self._append_rwkv_log(f"[BUILD] Windows launcher: {launcher}")
             proc = subprocess.Popen(
-                cmd,
+                launch_cmd,
                 cwd=self.repo_path,
                 env=env,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
             )
             self._rwkv_test_proc = proc
+            self._append_rwkv_log(" ".join(launch_cmd))
 
             def reader() -> None:
                 assert proc.stdout is not None
@@ -1749,7 +1778,12 @@ class HomeController(QObject):
                         self.is_rwkv_loading = False
                         self.is_rwkv_generating = False
                         self.rwkv_status = tr("rwkv_status_load_failed")
-                        self._append_rwkv_log(str(msg.get("message", "")))
+                        message = str(msg.get("message", ""))
+                        detail = str(msg.get("traceback", "")).strip()
+                        self._append_rwkv_log(message)
+                        if detail and detail != "NoneType: None":
+                            self._append_rwkv_log(detail)
+                        self._toast(tr("snackbar_load_failed"), message)
                     self._emit()
                 if self._rwkv_test_proc is proc:
                     self._rwkv_test_proc = None

@@ -1156,6 +1156,8 @@ class MainWindow(QMainWindow):
                 role = msg.get("role", "")
                 content = msg.get("content", "")
                 lines.append(f"[{role.upper()}] {content}")
+            if c.rwkv_test_log.strip():
+                lines.append("[LOG] " + c.rwkv_test_log.strip())
             self.test_chat_view.setPlainText("\n\n".join(lines))
 
         # ── Overlay ───────────────────────────────────────────────────────────

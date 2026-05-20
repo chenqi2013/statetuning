@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import traceback
 from pathlib import Path
 
 
@@ -16,7 +17,7 @@ def emit(event: str, **payload) -> None:
 
 
 def fail(message: str) -> None:
-    emit("error", message=message)
+    emit("error", message=message, traceback=traceback.format_exc())
 
 
 def infer_model_args(ckpt: dict) -> tuple[int, int, int]:
